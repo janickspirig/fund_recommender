@@ -212,6 +212,33 @@ CNPJ of Fund,Investor Profile,Rank,Score,Fund Name
 ```
 
 
+## Known Data Quality Issues
+
+### 1. Concentration Metrics: HHI > 1.0
+
+**Issue**: ~20% of funds had concentration HHI > 1.0 (max should be 1.0)
+
+**Root Cause**: CVM's `blc_8` (OtherAssets) includes accounting entries (Valores a Pagar/Receber, Disponibilidade) that inflated position values beyond NAV.
+
+**Resolution**: 
+- Filter accounting entries via `blc_8_accounting_entry_patterns` in `parameters.yml`
+- Guardrail: Automatically set HHI > 1.0 to `null` in concentration/diversification calculations
+- Affected funds still scored with renormalized weights on remaining features
+
+---
+
+### 2. Monthly Returns Calculation
+
+**Issue**: 
+- Simple lag caused multi-month return jumps when funds skipped reporting periods
+- Oldest month lost (lag calculated after filtering to N-month window)
+
+**Resolution**:
+- Left join with previous calendar month's NAV (handles missing months as null)
+- Apply N-month filter AFTER calculating returns (preserves all valid data points)
+
+---
+
 ## Limitations & Next Steps
 
 **Current Limitations**:
