@@ -8,13 +8,13 @@ n_top_funds_output: 5
 # ====================================
 investor_profiles:
   conservative:
-    liquidity: 0.20           # Keep high - conservative wants easy exit
-    risk_reward: 0.20         # INCREASED from 0.08 - still want good returns!
-    volatility: 0.15          # Lowered slightly - risk matters
-    concentration: 0.10       # Lowered slightly
-    asset_diversification: 0.10  # Lowered slightly
-    fund_age: 0.10            # Lowered - maturity matters but not critical
-    credit_quality: 0.15      # Lowered from 0.20 - quality matters but not everything
+    liquidity: 0.20           
+    risk_reward: 0.20         
+    volatility: 0.15          
+    concentration: 0.10       
+    asset_diversification: 0.10  
+    fund_age: 0.10            
+    credit_quality: 0.15      
     allowed_fund_subtypes:
     - Renda Fixa Simples
     - Renda Fixa Indexados
