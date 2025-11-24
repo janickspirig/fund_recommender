@@ -6,7 +6,7 @@ A **prototype** data pipeline that analyze Brazilian fixed income funds and prov
 ## Features
 
 - **7 Risk/Return Metrics**: Volatility, Sharpe ratio, liquidity, concentration, asset diversification, fund age, credit quality
-- **3 pre-set Investor Profiles**: Conservative, Moderate, Aggressive --> can add more base don specific needs
+- **4 pre-set Investor Profiles**: Conservative, Moderate, Aggressive, Speculator with option to add additional ones easily
 - **Brazilian Market Data**: CVM regulatory filings + ANBIMA fund characteristics
 
 ## Quick Start
@@ -24,26 +24,28 @@ A **prototype** data pipeline that analyze Brazilian fixed income funds and prov
    cd if-recomender
    ```
 
-2. **Install dependencies**
+2. **Create and activate virtual env (conda, pyenv etc.)**
+
+3. **Install dependencies**
    ```bash
    make install
    # or: pip install -r requirements.txt
    ```
 
-3. **Download raw data** (provided separately via Google Drive)
+4. **Download raw data**: Provided separately via [Google Drive](https://drive.google.com/drive/u/0/folders/1MIdHlpL7NkzWolrjW1f1rtbr_WePDhnW)
    ```bash
-   # Download data.zip from [Google Drive](https://drive.google.com/drive/u/0/folders/1MIdHlpL7NkzWolrjW1f1rtbr_WePDhnW)
+   # Download data.zip from GDrive
    # Extract into project root inside /data folder
-   unzip data.zip
+   unzip 01_raw.zip
    ```
 
-4. **Run the pipeline**
+5. **Run the pipeline**
    ```bash
    make run
    # or: kedro run
    ```
 
-5. **View recommendations**
+6. **View recommendations**
    ```bash
    cat data/08_reporting/rpt_shortlist.csv
    ```
@@ -116,7 +118,6 @@ Raw Data → Filter FI Funds → Calculate Returns → Compute Features
 ### 3. Concentration (HHI)
 - Herfindahl-Hirschman Index
 - Instrument-level diversification
-- Effective number of holdings
 
 ### 4. Asset Diversification
 - Category-level HHI
@@ -130,7 +131,7 @@ Raw Data → Filter FI Funds → Calculate Returns → Compute Features
 
 ### 6. Fund Age
 - Track record / maturity
-- Capped at 20 years
+- Capped at 20 years (adjustable)
 
 ## Configuration
 
