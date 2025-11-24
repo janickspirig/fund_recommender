@@ -8,13 +8,13 @@ n_top_funds_output: 5
 # ====================================
 investor_profiles:
   conservative:
-    liquidity: 0.20
-    risk_reward: 0.08
-    volatility: 0.16        
-    concentration: 0.12
-    asset_diversification: 0.12
-    fund_age: 0.12
-    credit_quality: 0.20
+    liquidity: 0.20           # Keep high - conservative wants easy exit
+    risk_reward: 0.20         # INCREASED from 0.08 - still want good returns!
+    volatility: 0.15          # Lowered slightly - risk matters
+    concentration: 0.10       # Lowered slightly
+    asset_diversification: 0.10  # Lowered slightly
+    fund_age: 0.10            # Lowered - maturity matters but not critical
+    credit_quality: 0.15      # Lowered from 0.20 - quality matters but not everything
     allowed_fund_subtypes:
     - Renda Fixa Simples
     - Renda Fixa Indexados
@@ -34,31 +34,31 @@ investor_profiles:
     #- Renda Fixa Investimento no Exterior
 
   moderate:
-    liquidity: 0.135
-    risk_reward: 0.315
-    volatility: 0.135
-    concentration: 0.09
-    asset_diversification: 0.135
-    fund_age: 0.09
-    credit_quality: 0.10
+    liquidity: 0.13           
+    risk_reward: 0.35         
+    volatility: 0.13          
+    concentration: 0.08       
+    asset_diversification: 0.13  
+    fund_age: 0.08            
+    credit_quality: 0.10    
   
   aggressive:
-    liquidity: 0.095
-    risk_reward: 0.475
-    volatility: 0.1425
-    concentration: 0.0475
-    asset_diversification: 0.095
-    fund_age: 0.095
-    credit_quality: 0.05
+    liquidity: 0.08           
+    risk_reward: 0.50         
+    volatility: 0.15          
+    concentration: 0.05       
+    asset_diversification: 0.08  
+    fund_age: 0.07            
+    credit_quality: 0.07      
 
   speculator:
-    liquidity: 0.0475
-    risk_reward: 0.6175
-    volatility: 0.1425
-    concentration: 0.0475
-    asset_diversification: 0.0475
-    fund_age: 0.0475
-    credit_quality: 0.05
+    liquidity: 0.03           
+    risk_reward: 0.68         
+    volatility: 0.12          
+    concentration: 0.03       
+    asset_diversification: 0.03  
+    fund_age: 0.03            
+    credit_quality: 0.08      
     target_investor_profile:
     #- Qualificado
     - Profissional
