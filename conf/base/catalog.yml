@@ -100,9 +100,39 @@ pri_instrument_rating:
   <<: *polars_csvdataset_defaults
   filepath: data/03_primary/pri_instrument_rating.csv
 
+
+
+fea_liquidity_per_fund:
+  <<: *polars_csvdataset_defaults
+  filepath: data/04_feature/fea_liquidity.csv
+
+fea_concentration_per_fund:
+  <<: *polars_csvdataset_defaults
+  filepath: data/04_feature/fea_concentration.csv
+
+fea_asset_diversification_per_fund:
+  <<: *polars_csvdataset_defaults
+  filepath: data/04_feature/fea_asset_diversification.csv
+
+fea_credit_quality_per_fund:
+  <<: *polars_csvdataset_defaults
+  filepath: data/04_feature/fea_credit_quality.csv
+
+fea_fund_age_per_fund:
+  <<: *polars_csvdataset_defaults
+  filepath: data/04_feature/fea_fund_age.csv
+
 fea_features_per_fund:
   <<: *polars_csvdataset_defaults
   filepath: data/04_feature/fea_features_per_fund.csv
+
+fea_sharpe_ratio_per_fund:
+  <<: *polars_csvdataset_defaults
+  filepath: data/04_feature/fea_sharpe_ratio.csv
+
+fea_volatility_per_fund:
+  <<: *polars_csvdataset_defaults
+  filepath: data/04_feature/fea_volatility.csv
 
 mi_scoring_input:
   <<: *polars_csvdataset_defaults
