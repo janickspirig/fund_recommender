@@ -1,0 +1,121 @@
+# Here you can define all your datasets by using simple YAML syntax.
+#
+# Documentation for this file format can be found in "The Data Catalog"
+# Link: https://docs.kedro.org/en/stable/data/data_catalog.html
+
+polars_csvdataset_defaults: &polars_csvdataset_defaults
+  type: polars.CSVDataset
+  save_args:
+    separator: ";"
+    null_value: ""
+  load_args:
+    separator: ";"
+
+raw_cvm_partitioned_latin1: &raw_cvm_partitioned_latin1
+  type: partitions.PartitionedDataset
+  dataset:
+    type: polars.CSVDataset
+    load_args:
+      separator: ";"
+      encoding: "latin1"
+      ignore_errors: true  # ignore few data inconsistency issues
+
+raw_anbima_fund_characteristics:
+  type: pandas.ExcelDataset
+  filepath: data/01_raw/anbima/fundos-175-caracteristicas-publico-16-11-2025-22-53-30.xlsx
+
+raw_cvm_monthly_fund_data:
+  <<: *raw_cvm_partitioned_latin1
+  path: data/01_raw/cvm/data/pl
+
+raw_cvm_blc_1_data:
+  <<: *raw_cvm_partitioned_latin1
+  path: data/01_raw/cvm/data/blc_1
+
+raw_cvm_blc_2_data:
+  <<: *raw_cvm_partitioned_latin1
+  path: data/01_raw/cvm/data/blc_2
+
+raw_cvm_blc_3_data:
+  <<: *raw_cvm_partitioned_latin1
+  path: data/01_raw/cvm/data/blc_3
+
+raw_cvm_blc_4_data:
+  <<: *raw_cvm_partitioned_latin1
+  path: data/01_raw/cvm/data/blc_4
+
+raw_cvm_blc_5_data:
+  <<: *raw_cvm_partitioned_latin1
+  path: data/01_raw/cvm/data/blc_5
+
+raw_cvm_blc_6_data:
+  <<: *raw_cvm_partitioned_latin1
+  path: data/01_raw/cvm/data/blc_6
+
+raw_cvm_blc_7_data:
+  <<: *raw_cvm_partitioned_latin1
+  path: data/01_raw/cvm/data/blc_7
+
+raw_cvm_blc_8_data:
+  <<: *raw_cvm_partitioned_latin1
+  path: data/01_raw/cvm/data/blc_8
+
+int_period_fund_data:
+  <<: *polars_csvdataset_defaults
+  filepath: data/02_intermediate/int_period_fund_data.csv
+
+int_funds_in_scope:
+  <<: *polars_csvdataset_defaults
+  filepath: data/02_intermediate/int_funds_in_scope.csv
+
+int_fund_characteristics:
+  <<: *polars_csvdataset_defaults
+  filepath: data/02_intermediate/int_fund_characteristics.csv
+
+pri_nav_per_period:
+  <<: *polars_csvdataset_defaults
+  filepath: data/03_primary/pri_nav_per_period.csv
+
+pri_returns_per_fund:
+  <<: *polars_csvdataset_defaults
+  filepath: data/03_primary/pri_returns_per_fund.csv
+
+pri_characteristics:
+  <<: *polars_csvdataset_defaults
+  filepath: data/03_primary/pri_characteristics.csv
+
+pri_fund_managers:
+  <<: *polars_csvdataset_defaults
+  filepath: data/03_primary/pri_fund_managers.csv
+
+pri_instrument_prices:
+  <<: *polars_csvdataset_defaults
+  filepath: data/03_primary/pri_instrument_prices.csv
+
+pri_composition:
+  <<: *polars_csvdataset_defaults
+  filepath: data/03_primary/pri_composition.csv
+
+pri_instrument_rating:
+  <<: *polars_csvdataset_defaults
+  filepath: data/03_primary/pri_instrument_rating.csv
+
+fea_features_per_fund:
+  <<: *polars_csvdataset_defaults
+  filepath: data/04_feature/fea_features_per_fund.csv
+
+mi_scoring_input:
+  <<: *polars_csvdataset_defaults
+  filepath: data/05_model_input/mi_scoring_input.csv
+
+mo_scores_per_profile:
+  <<: *polars_csvdataset_defaults
+  filepath: data/07_model_output/mo_scores_per_profile.csv
+
+rpt_shortlist:
+  <<: *polars_csvdataset_defaults
+  filepath: data/08_reporting/rpt_shortlist.csv
+
+rpt_complete_ranking:
+  <<: *polars_csvdataset_defaults
+  filepath: data/08_reporting/rpt_complete_ranking.csv

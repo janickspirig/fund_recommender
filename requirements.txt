@@ -1,0 +1,11 @@
+kedro>=1.0.0,<2.0.0
+polars>=0.19.0
+pandas>=2.0.0
+openpyxl>=3.1.0
+ipython>=8.10
+jupyterlab>=3.0
+notebook>=7.0
+pytest-cov~=3.0
+pytest-mock>=1.7.1,<2.0
+pytest~=7.2
+ruff~=0.12.0

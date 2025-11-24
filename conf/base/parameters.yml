@@ -1,0 +1,121 @@
+# ====================================
+# OUTPUT CONFIGURATION
+# ====================================
+n_top_funds_output: 5
+
+# ====================================
+# INVESTOR PROFILES
+# ====================================
+investor_profiles:
+  conservative:
+    liquidity: 0.20
+    risk_reward: 0.08
+    volatility: 0.16        
+    concentration: 0.12
+    asset_diversification: 0.12
+    fund_age: 0.12
+    credit_quality: 0.20
+    allowed_fund_subtypes:
+    - Renda Fixa Simples
+    - Renda Fixa Indexados
+    #- Renda Fixa Dívida Externa
+    #- Renda Fixa Duração Alta Crédito Livre
+    #- Renda Fixa Duração Alta Grau de Investimento
+    #- Renda Fixa Duração Alta Soberano
+    #- Renda Fixa Duração Baixa Crédito Livre
+    #- Renda Fixa Duração Baixa Grau de Investimento
+    #- Renda Fixa Duração Baixa Soberano
+    #- Renda Fixa Duração Livre Crédito Livre
+    #- Renda Fixa Duração Livre Grau de Investimento
+    #- Renda Fixa Duração Livre Soberano
+    #- Renda Fixa Duração Média Crédito Livre
+    #- Renda Fixa Duração Média Grau de Investimento
+    #- Renda Fixa Duração Média Soberano
+    #- Renda Fixa Investimento no Exterior
+
+  moderate:
+    liquidity: 0.135
+    risk_reward: 0.315
+    volatility: 0.135
+    concentration: 0.09
+    asset_diversification: 0.135
+    fund_age: 0.09
+    credit_quality: 0.10
+  
+  aggressive:
+    liquidity: 0.095
+    risk_reward: 0.475
+    volatility: 0.1425
+    concentration: 0.0475
+    asset_diversification: 0.095
+    fund_age: 0.095
+    credit_quality: 0.05
+
+  speculator:
+    liquidity: 0.0475
+    risk_reward: 0.6175
+    volatility: 0.1425
+    concentration: 0.0475
+    asset_diversification: 0.0475
+    fund_age: 0.0475
+    credit_quality: 0.05
+    target_investor_profile:
+    #- Qualificado
+    - Profissional
+    #- Geral
+    #- ND
+
+# ====================================
+# CREDIT RATING
+# ====================================
+credit_rating_order:
+  - AAA+
+  - BRAAA
+  - AAA(BR
+  - BRAA+
+  - AA(BRA
+  - AA-(BR
+  - BBB-(B
+  - Ba1
+  - Ba2
+  - BA2.BR
+
+credit_rating_investment_grade_threshold: BBB-(B
+
+# ====================================
+# GUARDRAILS
+# ====================================
+guardrails:
+  min_offer_count_provider: 5
+  exclude_funds_without_manager: false
+
+# ====================================
+# DATA SCOPE
+# ====================================
+num_period_months: 33
+min_data_period_per_fund: 3
+
+cvm_fi_fund_types:
+ - CLASSES - FIF
+ - FI  # previous classification
+ 
+anbima_fi_fund_types:
+ - Renda Fixa
+ 
+anbima_accessability:
+- Não Há Restrição
+- Não há Restrição
+
+# ====================================
+# RISK & SCORING
+# ====================================
+risk_free_rate_annual: 0.1371  # CDI on 23/11
+fund_age_cap_years: 20.0
+
+normalization_lower_percentile: 0.05
+normalization_upper_percentile: 0.95
+use_log_volatility: true
+
+sharpe_ratio:
+  min_periods_12m: 12
+  epsilon_volatility: 1e-8
