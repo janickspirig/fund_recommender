@@ -30,19 +30,16 @@ def feat_calculate_asset_diversification(
 
     active_composition = composition.filter(pl.col("is_active") == 1)
 
-    # Calculate latest period per fund
     latest_period_per_fund = period_nav.group_by("cnpj").agg(
         pl.col("period").max().alias("latest_period")
     )
 
-    # Filter prices to latest period FIRST (huge reduction in size)
     latest_prices = (
         instrument_prices.join(latest_period_per_fund, on="cnpj", how="inner")
         .filter(pl.col("period") == pl.col("latest_period"))
         .select(["cnpj", "instrument_id", "position_value"])
     )
 
-    # NOW join with composition (much smaller join)
     prices_with_cat = latest_prices.join(
         active_composition.select(["cnpj", "instrument_id", "asset_category"]),
         on=["cnpj", "instrument_id"],
