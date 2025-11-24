@@ -59,7 +59,11 @@ def primary_pipeline(**kwargs):
             ),
             node(
                 func=pri_create_composition,
-                inputs=["pri_instrument_prices"],
+                inputs=[
+                    "pri_instrument_prices",
+                    "pri_nav_per_period",
+                    "params:blc_8_accounting_entry_patterns",
+                ],
                 outputs="pri_composition",
                 name="create_composition",
             ),

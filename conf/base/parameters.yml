@@ -119,3 +119,29 @@ use_log_volatility: true
 sharpe_ratio:
   min_periods_12m: 12
   epsilon_volatility: 1e-8
+
+# ====================================
+# COMPOSITION FILTERING
+# ====================================
+# exclude accounting entries from blc_8 (OtherAssets) which are not investment positions
+blc_8_accounting_entry_patterns:
+  - "Valores a Pagar"
+  - "ValoresaPagar"
+  - "Valores_a_Pagar"
+  - "Valores a Receber"
+  - "ValoresaReceber"
+  - "Valores_a_Receber"
+  - "Valores a Liquidar"
+  - "Valores_a_Liquidar"
+  - "Disponibilidade"
+  - "Disponibilidades"
+  - "Valores a Re ceber"
+  - "Valores a Receb"
+  - "CONTA CORRENTE"
+  - "OBRIG"  
+  - "BANCO"  
+  - "CAIXA"  
+  - "AUDITORIA"
+  - "A PAGAR"  
+  - "PREMIO"  
+  - "DIFERIR"  
