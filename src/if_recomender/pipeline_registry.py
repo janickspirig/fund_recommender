@@ -13,11 +13,7 @@ from if_recomender.pipelines.reporting import reporting_pipeline
 
 
 def register_pipelines() -> dict[str, Pipeline]:
-    """Register the project's pipelines.
-
-    Returns:
-        A mapping from pipeline names to ``Pipeline`` objects.
-    """
+    """Register all project pipelines."""
     pipelines = find_pipelines()
     pipelines["intermediate"] = intermediate_pipeline()
     pipelines["primary"] = primary_pipeline()
