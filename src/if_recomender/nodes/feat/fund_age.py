@@ -6,15 +6,16 @@ def feat_calculate_fund_age(
     characteristics: pl.DataFrame,
     fund_age_cap_years: float,
 ) -> pl.DataFrame:
-    """
-    Calculate fund age and normalize to 0-1 score.
+    """Calculate fund age from inception date and normalize to 0-1 score.
+
+    Score is capped at fund_age_cap_years (older funds get max score of 1.0).
 
     Args:
-        characteristics: DataFrame with cnpj, inception_date
-        fund_age_cap_years: Maximum years for score cap
+        characteristics: Fund data with cnpj, inception_date.
+        fund_age_cap_years: Maximum years for score normalization.
 
     Returns:
-        DataFrame with cnpj, inception_date, fund_age_days, fund_age_years, fund_age_score
+        DataFrame with cnpj, inception_date, fund_age_days, fund_age_years, fund_age_score.
     """
 
     age_data = characteristics.select("cnpj", "inception_date")
@@ -41,7 +42,6 @@ def feat_calculate_fund_age(
         (pl.col("fund_age_days") / 365.0).alias("fund_age_years")
     )
 
-    # convert to to 0-1 score (capped at fund_age_cap_years)
     age_data = age_data.with_columns(
         [
             pl.when(pl.col("fund_age_years").is_null())

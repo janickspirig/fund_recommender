@@ -3,7 +3,7 @@ import unicodedata
 
 
 def make_safe_column_name(value: str) -> str:
-    """Convert category value to safe is_* column name"""
+    """Convert category value to safe is_* column name."""
     value = unicodedata.normalize("NFD", value)
     value = "".join(c for c in value if unicodedata.category(c) != "Mn")
 
@@ -19,19 +19,19 @@ def pri_create_fund_characteristics(
     spine_funds: pl.DataFrame,
     fund_characteristics: pl.DataFrame,
 ) -> pl.DataFrame:
-    """
-    Create primary characteristics table with one-hot encoded category flags, redemption terms, and inception date.
+    """Build fund characteristics with one-hot encoded ANBIMA category flags.
 
-    Note: ANBIMA data may contain multiple share classes per CNPJ. This function deduplicates by keeping
-    row with the earliest inception date (representing master fund inception).
+    Deduplicates share classes by keeping earliest inception date per CNPJ.
+    Creates is_* columns for each unique category value across all levels.
+
+    Args:
+        period_fi_fund_data: CVM period data (unused, for pipeline compatibility).
+        spine_funds: Funds in scope with cnpj column.
+        fund_characteristics: ANBIMA fund metadata with categories and attributes.
 
     Returns:
-        DataFrame with columns:
-        - cnpj, commercial_name, redemption_days, inception_date, is_active
-        - anbima_category_main, anbima_category_level_1, anbima_category_level_2, anbima_category_level_3
-        - target_investor_type, fund_subtype, accessability, fund_manager
-        - is_* : One-hot encoded flags for all category values (30-40 columns)
-          Examples: is_renda_fixa, is_renda_fixa_simples, is_credito_livre
+        DataFrame with cnpj, category columns, fund_manager, redemption_days,
+        inception_date, is_active, and ~30-40 is_* one-hot columns.
     """
 
     fund_characteristics_dedup = (

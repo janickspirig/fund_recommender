@@ -2,15 +2,18 @@ import polars as pl
 
 
 def pri_create_monthly_nav_data(period_fi_fund_data: pl.DataFrame) -> pl.DataFrame:
-    """
-    Create feature primary table from filtered data containing monthly net asset values.
+    """Extract monthly NAV values from CVM period data.
+
+    Converts date to YYYYMM format and deduplicates records.
+
     Args:
-        period_fi_fund_data: Polars DataFrame with filtered period fixed income data.
+        period_fi_fund_data: CVM data with cnpj, DT_COMPTC, VL_PATRIM_LIQ.
+
     Returns:
-        Polars DataFrame with columns: cnpj (fund identifier), period (YYYYMM), price (float value).
+        DataFrame with cnpj, period (YYYYMM string), price (NAV as float).
     """
 
-    feature_primary_table = period_fi_fund_data.select(
+    period_fi_fund_data = period_fi_fund_data.select(
         [
             pl.col("cnpj"),
             pl.col("DT_COMPTC")
@@ -21,4 +24,7 @@ def pri_create_monthly_nav_data(period_fi_fund_data: pl.DataFrame) -> pl.DataFra
         ]
     )
 
-    return feature_primary_table
+    # addressing issue in cvm data of duplicated funds
+    period_fi_fund_data = period_fi_fund_data.unique()
+
+    return period_fi_fund_data

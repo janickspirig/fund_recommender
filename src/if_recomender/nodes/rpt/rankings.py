@@ -1,31 +1,36 @@
 import polars as pl
-from typing import Dict, Any, Tuple
+from typing import Dict, Tuple
+
+from if_recomender.utils import pl_cnpj_to_formatted
 
 
 def rpt_create_rankings(
     fund_scores_per_profile: pl.DataFrame,
+    guardrail_mark: pl.DataFrame,
     characteristics: pl.DataFrame,
-    fund_managers: pl.DataFrame,
     n_top_funds_output: int,
     investor_profiles: Dict[str, Dict],
-    guardrails: Dict[str, Any],
 ) -> Tuple[pl.DataFrame, pl.DataFrame]:
-    """
-    Create shortlist and complete ranking for each investor profile.
+    """Create shortlist and full ranking per profile after guardrail filtering.
 
-    Applies profile-specific filters and guardrails as configured in parameters.yml.
+    Applies profile-specific fund subtype and investor type filters.
 
     Args:
-        fund_scores_per_profile: Scored funds with ranks
-        characteristics: Fund metadata
-        fund_managers: Manager statistics
-        n_top_funds_output: Number of top funds per profile
-        investor_profiles: Profile configs with optional filters
-        guardrails: Min offer count and manager exclusion rules
+        fund_scores_per_profile: Scored funds with cnpj, investor_profile, score.
+        guardrail_mark: Guardrail results with cnpj, pass_guardrail.
+        characteristics: Fund metadata with cnpj, commercial_name, fund_subtype.
+        n_top_funds_output: Number of top funds per profile for shortlist.
+        investor_profiles: Profile configs with optional filters.
 
     Returns:
-        Tuple of (shortlist, complete_ranking) DataFrames
+        Tuple of (shortlist, complete_ranking) DataFrames.
     """
+
+    fund_scores_per_profile = fund_scores_per_profile.join(
+        guardrail_mark.filter(pl.col("pass_guardrail")).select("cnpj"),
+        on="cnpj",
+        how="inner",
+    )
 
     enriched_scores = fund_scores_per_profile.join(
         characteristics.select(
@@ -43,7 +48,7 @@ def rpt_create_rankings(
 
     filtered_scores = []
 
-    # filtering
+    # filtering by profile-specific config
     unique_profiles = enriched_scores["investor_profile"].unique()
     for profile_name in unique_profiles:
         profile_data = enriched_scores.filter(
@@ -70,29 +75,6 @@ def rpt_create_rankings(
 
     enriched_scores = pl.concat(filtered_scores)
 
-    # guardrails
-    min_offer_count = guardrails.get("min_offer_count_provider", 0)
-    exclude_funds_without_manager = guardrails.get(
-        "exclude_funds_without_manager", False
-    )
-
-    enriched_scores = enriched_scores.join(
-        fund_managers.select(["fund_manager", "num_funds"]),
-        on="fund_manager",
-        how="left",
-    )
-
-    if exclude_funds_without_manager:
-        enriched_scores = enriched_scores.filter(
-            (pl.col("fund_manager").is_not_null())
-            & (pl.col("num_funds") >= min_offer_count)
-        )
-
-    enriched_scores = enriched_scores.filter(
-        (pl.col("fund_manager").is_null()) | (pl.col("num_funds") >= min_offer_count)
-    )
-
-    # create shortlist and complete ranking after filtering
     top_funds = []
     complete_rankings = []
 
@@ -108,7 +90,7 @@ def rpt_create_rankings(
             )
             .sort("score", descending=True)
             .select(
-                pl.col("cnpj").alias("CNPJ"),
+                pl_cnpj_to_formatted("cnpj").alias("CNPJ"),
                 pl.col("commercial_name").alias("Fund Name"),
                 pl.col("investor_profile").alias("Investor Profile"),
                 pl.col("score").round(3).alias("Score"),

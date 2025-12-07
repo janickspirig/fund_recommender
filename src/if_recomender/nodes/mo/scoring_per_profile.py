@@ -5,15 +5,17 @@ from typing import Dict
 def mo_scoring_per_profile(
     scoring_input: pl.DataFrame, investor_profiles: Dict[str, Dict[str, float]]
 ) -> pl.DataFrame:
-    """
-    Calculate fund scores and rankings for each investor profile.
+    """Calculate weighted scores and rankings per investor profile.
+
+    Weights are re-normalized based on available features per fund.
+    Missing features do not penalize the fund's score.
 
     Args:
-        scoring_input: DataFrame with normalized feature scores (0-1)
-        investor_profiles: Profile configs with feature weights
+        scoring_input: Normalized feature scores (0-1) with cnpj.
+        investor_profiles: Profile configs with feature weights.
 
     Returns:
-        DataFrame with cnpj, investor_profile, score, rank, pct_features_considered
+        DataFrame with cnpj, investor_profile, score, rank, pct_features_considered.
     """
 
     scoring_input = scoring_input.with_columns(
