@@ -97,7 +97,7 @@ if-recomender/
 
 ### ANBIMA (Brazilian Financial Markets Association)
 - Fund characteristics (redemption terms, categories, inception dates)
-- ~5,400 fixed income funds
+- ~6,000 fixed income funds
 
 ## Pipeline Overview
 
@@ -348,7 +348,7 @@ TP_FUNDO;CNPJ_FUNDO;DENOM_SOCIAL;DT_COMPTC;VL_PATRIM_LIQ
 FI;10.705.306/0001-05;URCA FUNDO DE INVESTIMENTO RF...;2023-06-30;-184655.57
 ```
 
-**Resolution**: Filtered via `remove_funds_w_negative_cvm_pl_values: true` (3 funds, 14 records).
+**Resolution**: Filtered via `remove_funds_w_negative_cvm_pl_values: true`. Affects ~210 funds with 948 negative NAV records across the dataset.
 
 ---
 
@@ -356,7 +356,7 @@ FI;10.705.306/0001-05;URCA FUNDO DE INVESTIMENTO RF...;2023-06-30;-184655.57
 
 **Issue**: Some funds have gaps in their reporting periods (non-consecutive months).
 
-**Example**: CNPJ 35755913000100 has 25 of expected 33 months between 202302-202504.
+**Example**: CNPJ 35755913000100 has 27 of 28 expected months (202301-202504), missing 202404.
 
 **Resolution**: Returns calculated only between consecutive periods (null for gaps).
 
