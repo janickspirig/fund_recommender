@@ -1,4 +1,4 @@
-.PHONY: help install setup run run-features run-scoring test clean lint notebook
+.PHONY: help install setup run data-setup test lint
 
 help:
 	@echo "IF Recommender - Brazilian Fixed Income Fund Recommendation System"
@@ -10,7 +10,6 @@ help:
 	@echo "  make run            - Run complete pipeline"
 	@echo "  make test           - Run tests"
 	@echo "  make lint           - Run code linting"
-
 
 install:
 	@echo "Installing dependencies..."
@@ -42,7 +41,7 @@ setup: install data-setup
 run:
 	@echo "Running complete pipeline..."
 	kedro run
-	@echo "✅ Pipeline complete! Check data/08_reporting/recommendations.csv"
+	@echo "✅ Pipeline complete! Check data/08_reporting/rpt_shortlist.csv"
 
 test:
 	@echo "Running tests..."
@@ -50,4 +49,4 @@ test:
 
 lint:
 	@echo "Running linter..."
-	ruff check src/
+	ruff format src/
