@@ -50,6 +50,12 @@ A **prototype** data pipeline that analyze Brazilian fixed income funds and prov
    cat data/08_reporting/rpt_shortlist.csv
    ```
 
+7. **Visualize pipeline** (optional)
+   ```bash
+   kedro viz
+   # Opens interactive pipeline visualization at http://127.0.0.1:4141
+   ```
+
 ## Project Structure
 
 ```
@@ -57,23 +63,27 @@ if-recomender/
 ├── conf/
 │   └── base/
 │       ├── catalog.yml      # Data sources & outputs
+│       ├── globals.yml      # Global computed values (max_period)
 │       └── parameters.yml   # Configuration (investor profiles, thresholds)
 ├── data/
 │   ├── 01_raw/              # Raw CVM & ANBIMA data (from Google Drive)
+│   ├── 01_raw_backup/       # Timestamped backups of raw data
 │   ├── 02_intermediate/     # Filtered & joined data
 │   ├── 03_primary/          # Clean tables (NAV, returns, characteristics)
 │   ├── 04_feature/          # Calculated features (unified table)
 │   ├── 05_model_input/      # Normalized scoring inputs
 │   ├── 07_model_output/     # Fund scores per profile
 │   └── 08_reporting/        # Final recommendations
+├── scripts/
+│   └── restore_data.py      # Restore raw data from backup
 ├── src/if_recomender/
 │   ├── nodes/
 │   │   ├── int/             # Data filtering
 │   │   ├── pri/             # Primary tables
 │   │   ├── feat/            # Feature calculation
 │   │   ├── mi/              # Score normalization
-│   │   ├── mo/              # Profile scoring
-│   │   └── reporting/       # Top recommendations
+│   │   ├── mo/              # Profile scoring & guardrails
+│   │   └── rpt/             # Reporting & rankings
 │   └── pipelines/           # Kedro pipelines
 └── notebooks/               # Jupyter notebooks for analysis
 ```
@@ -131,7 +141,7 @@ Raw Data → Filter FI Funds → Calculate Returns → Compute Features
 
 ### 6. Fund Age
 - Track record / maturity
-- Capped at 20 years (adjustable)
+- Capped at 30 years (adjustable)
 
 ## Configuration
 
@@ -149,7 +159,7 @@ All parameters are defined in `conf/base/parameters.yml`.
 **normalization_upper_percentile** (float, 0-1, default: 0.95)
 - Percentile bounds for feature normalization
 
-**fund_age_cap_years** (float, default: 20.0)
+**fund_age_cap_years** (float, default: 30.0)
 - Maximum years for fund age scoring
 
 **min_data_period_per_fund** (integer, default: 3)
@@ -177,16 +187,43 @@ investor_profiles:
 
 ### Guardrails
 
+Guardrails are post-scoring filters that ensure recommendation quality by excluding funds that don't meet minimum criteria. They run after scoring but before final ranking.
+
 ```yaml
 guardrails:
-  min_offer_count_provider: 5  # Min funds per manager
-  exclude_funds_without_manager: false  # Exclude unassigned funds
+  min_offer_per_issuer:           # Require fund manager to have multiple funds
+    active: true
+    params:
+      min_offer_count: 5         
+
+  min_threshold_sharpe_12m:       # Require 12-month positive track record
+    active: true
+    params:
+      min_sharpe_12m: 0.0        
+
+  min_threshold_sharpe_3m:        # Require 3-month track record
+    active: false
+    params:
+      min_sharpe_3m: 0.0
+
+  no_funds_wo_manager:            # Exclude funds with unknown manager
+    active: false
+
+  include_only_active_funds:      # Exclude funds without recent data (PL)
+    active: true                 
 ```
+
+Failed guardrails are tracked in `mo_guardrail_mark.csv` with a `failed_guardrails` column showing which checks each fund failed.
 
 ### Data Scope
 
-**num_period_months** (integer, default: 33)
+**num_period_months** (integer, default: null)
 - Number of recent months to analyze
+- When `null`, includes all available historical data from raw folder
+
+**remove_funds_w_negative_cvm_pl_values** (boolean, default: true)
+- Filters out funds with negative NAV values in latest period
+- See Known Data Quality Issues for details
 
 **cvm_fi_fund_types** (list)
 - CVM fund types to include
@@ -212,30 +249,116 @@ CNPJ of Fund,Investor Profile,Rank,Score,Fund Name
 ```
 
 
-## Known Data Quality Issues
+## Sample Results
 
-### 1. Concentration Metrics: HHI > 1.0
+The following results demonstrate the profile differentiation achieved by the recommendation system.
 
-**Issue**: ~20% of funds had concentration HHI > 1.0 (max should be 1.0)
+### Profile Ladder Summary
 
-**Root Cause**: CVM's `blc_8` (OtherAssets) includes accounting entries (Valores a Pagar/Receber, Disponibilidade) that inflated position values beyond NAV.
+| Profile | Avg Sharpe 12m | Avg Volatility | Avg Age | Primary Fund Types |
+|---------|----------------|----------------|---------|-------------------|
+| Conservative | 1.09 | 10.1% | 19.1y | Duração Baixa Soberano, Indexados |
+| Moderate | 3.38 | 6.5% | 15.4y | Duração Média/Baixa Grau de Investimento |
+| Aggressive | 5.48 | 6.1% | 9.7y | Duração Livre Crédito Livre, Grau de Investimento |
+| Speculator | 4.52 | 12.8% | 3.3y | Crédito Livre, Investimento no Exterior |
 
-**Resolution**: 
-- Filter accounting entries via `blc_8_accounting_entry_patterns` in `parameters.yml`
-- Guardrail: Automatically set HHI > 1.0 to `null` in concentration/diversification calculations
-- Affected funds still scored with renormalized weights on remaining features
+**Key Observations**:
+- **Fund Age decreases** from Conservative (19y) → Moderate (15y) → Aggressive (10y) → Speculator (3y)
+- **Sharpe ratio increases** from Conservative (1.09) → Aggressive (5.48) - higher risk-adjusted returns
+- **Speculator volatility** is highest (12.8%) with foreign investment exposure
+- **Conservative funds** focus on sovereign/government bonds ("Soberano", "Indexados")
+
+### Top 5 Funds per Profile
+
+#### Conservative
+| # | Fund Name | Score | Sharpe 12m | Vol | Age |
+|---|-----------|-------|------------|-----|-----|
+| 1 | SAFRA SOBERANO DI CLASSE DE INVESTIMENTO RF R | 0.803 | 0.90 | 10.1% | 16y |
+| 2 | ITAÚ RF CP FIF RESP LIMITADA | 0.793 | 0.07 | 3.2% | 24y |
+| 3 | SANTANDER TÍTULOS PÚBLICOS RENDA FIXA REFEREN | 0.774 | 1.10 | 3.7% | 19y |
+| 4 | ITAÚ INSTITUCIONAL RF IRF M 1 FIF RESP LIMITA | 0.759 | 2.27 | 4.7% | 18y |
+| 5 | CLASSE ÚNICA DE COTAS DO GRUPAL CASH FUNDO DE | 0.758 | 1.12 | 28.7% | 18y |
+
+#### Moderate
+| # | Fund Name | Score | Sharpe 12m | Vol | Age |
+|---|-----------|-------|------------|-----|-----|
+| 1 | BB TOP RENDA FIXA ARROJADO FUNDO DE INVESTIME | 0.897 | 1.26 | 2.1% | 26y |
+| 2 | VALORA ABSOLUTE FIF RF CRED PRIV LP - RESP LI | 0.896 | 5.79 | 6.0% | 17y |
+| 3 | CLASSE ÚNICA DE COTAS DO RIZA LOTUS PLUS MAST | 0.880 | 3.20 | 8.2% | 4y |
+| 4 | NU YIELD FIF RF CRED PRIV LP RESP LIMITADA | 0.880 | 5.04 | 9.7% | 4y |
+| 5 | BRADESCO CLASSE DE INVESTIMENTO RF REFERENCIA | 0.879 | 1.60 | 6.3% | 26y |
+
+#### Aggressive
+| # | Fund Name | Score | Sharpe 12m | Vol | Age |
+|---|-----------|-------|------------|-----|-----|
+| 1 | VALORA ABSOLUTE FIF RF CRED PRIV LP - RESP LI | 0.926 | 5.79 | 6.0% | 17y |
+| 2 | Sicoob DI Fundo de Investimento Financeiro Re | 0.914 | 4.22 | 0.9% | 14y |
+| 3 | NU YIELD FIF RF CRED PRIV LP RESP LIMITADA | 0.906 | 5.04 | 9.7% | 4y |
+| 4 | CLASSE ÚNICA DE COTAS DO ABSOLUTE CRETA MASTE | 0.905 | 8.61 | 9.4% | 3y |
+| 5 | BNP PARIBAS RUBI CLASSE DE INVESTIMENTO EM CO | 0.903 | 3.71 | 4.6% | 11y |
+
+#### Speculator
+| # | Fund Name | Score | Sharpe 12m | Vol | Age |
+|---|-----------|-------|------------|-----|-----|
+| 1 | BRADESCO MASTER ULTRA PREVIDÊNCIA FI FINANCEI | 0.951 | 4.62 | 8.1% | 4y |
+| 2 | ITAÚ JANEIRO OFF PREV RF IE FIF RESP LIMITADA | 0.899 | 7.16 | 23.7% | 2y |
+| 3 | JGP CRÉDITO PV FIF RF IE - RESP LIMITADA | 0.899 | 3.71 | 8.8% | 6y |
+| 4 | CAIXA MASTER II CLASSE DE INVESTIMENTO FINANC | 0.877 | 4.83 | 16.3% | 2y |
+| 5 | ICATU VANGUARDA VEÍCULO ESPECIAL FUNDO DE INV | 0.840 | 2.25 | 6.8% | 3y |
 
 ---
 
-### 2. Monthly Returns Calculation
+## Known Data Quality Issues
 
-**Issue**: 
-- Simple lag caused multi-month return jumps when funds skipped reporting periods
-- Oldest month lost (lag calculated after filtering to N-month window)
+### 1. Malformed Quotes in CVM Files
 
-**Resolution**:
-- Left join with previous calendar month's NAV (handles missing months as null)
-- Apply N-month filter AFTER calculating returns (preserves all valid data points)
+**Issue**: Some fund names contain unescaped quotes that break CSV parsing.
+
+**Example** (`pl/202304.csv` line 3):
+```csv
+TP_FUNDO;CNPJ_FUNDO;DENOM_SOCIAL;DT_COMPTC;VL_PATRIM_LIQ
+FACFIF;07.408.147/0001-64;FUNDO AMAZONIA... MIX "2";2023-04-30;22317.32
+```
+
+**Resolution**: Auto-fixed by validation hooks (quotes are doubled/escaped before pipeline run).
+
+---
+
+### 2. Redundant Quotes in CVM Files
+
+**Issue**: Extra quote characters before delimiters cause parsing failures.
+
+**Example** (`pl/202312.csv` line 23970):
+```csv
+TP_FUNDO;CNPJ_FUNDO;DENOM_SOCIAL;DT_COMPTC;VL_PATRIM_LIQ
+FI;50.095.878/0001-26;DECK FUNDO DE INVESTIMENTO FINANCEIRO",;2023-12-31;8171565.36
+```
+
+**Resolution**: Auto-fixed by validation hooks (redundant quotes removed).
+
+---
+
+### 3. Negative NAV Values
+
+**Issue**: Some funds report negative patrimonio liquido (NAV), which is anomalous.
+
+**Example** (`pl/202306.csv`):
+```csv
+TP_FUNDO;CNPJ_FUNDO;DENOM_SOCIAL;DT_COMPTC;VL_PATRIM_LIQ
+FI;10.705.306/0001-05;URCA FUNDO DE INVESTIMENTO RF...;2023-06-30;-184655.57
+```
+
+**Resolution**: Filtered via `remove_funds_w_negative_cvm_pl_values: true` (3 funds, 14 records).
+
+---
+
+### 4. Missing Period Data
+
+**Issue**: Some funds have gaps in their reporting periods (non-consecutive months).
+
+**Example**: CNPJ 35755913000100 has 25 of expected 33 months between 202302-202504.
+
+**Resolution**: Returns calculated only between consecutive periods (null for gaps).
 
 ---
 
@@ -249,12 +372,13 @@ CNPJ of Fund,Investor Profile,Rank,Score,Fund Name
 
 **Recommended Enhancements**:
 1. **Automated Data Pipeline**: Integrate ANBIMA and CVM APIs with Kedro hooks to enable automatic data refresh before pipeline run
-2. **Data Quality**: Improve CVM file parsing and handle edge cases of data quality issues / inconsistencies
-3. **File format**: Migrate to .parquet format or Databricks delta tables to enable scalable approach for longer historical data
-4. **Feature Engineering**: Add duration, credit spread, manager performance, etc.
-5. **Parameter Optimization**: Use Bayesian optimization or ML to learn optimal weights
-6. **Backtesting**: Validate recommendations against historical performance
-7. **Unit tests**: Add comprehensive unit tests with pytest to test logic of each pipeline node in isolation
-8. **User Interface**: Build web dashboard for interactive fund exploration
-9. ...
+
+2. **File format**: Migrate to .parquet format or Databricks delta tables to enable scalable approach for longer historical data
+3. **Feature Engineering**: Add duration, credit spread, manager performance, etc.
+4. **Parameter Optimization**: Use Bayesian optimization or ML to learn optimal weights
+5. **Backtesting**: Validate recommendations against historical performance
+6. **Unit tests**: Add comprehensive unit tests with pytest to test logic of each pipeline node in isolation
+7. **User Interface**: Build web dashboard for interactive fund exploration
+8. ...
+
 

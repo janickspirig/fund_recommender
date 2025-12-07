@@ -9,11 +9,10 @@ def reporting_pipeline(**kwargs):
                 func=rpt_create_rankings,
                 inputs=[
                     "mo_scores_per_profile",
+                    "mo_guardrail_mark",
                     "pri_characteristics",
-                    "pri_fund_managers",
                     "params:n_top_funds_output",
                     "params:investor_profiles",
-                    "params:guardrails",
                 ],
                 outputs=["rpt_shortlist", "rpt_complete_ranking"],
                 name="create_rankings",

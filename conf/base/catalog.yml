@@ -1,9 +1,4 @@
-# Here you can define all your datasets by using simple YAML syntax.
-#
-# Documentation for this file format can be found in "The Data Catalog"
-# Link: https://docs.kedro.org/en/stable/data/data_catalog.html
-
-polars_csvdataset_defaults: &polars_csvdataset_defaults
+_polars_csvdataset_defaults: &_polars_csvdataset_defaults
   type: polars.CSVDataset
   save_args:
     separator: ";"
@@ -11,141 +6,311 @@ polars_csvdataset_defaults: &polars_csvdataset_defaults
   load_args:
     separator: ";"
 
-raw_cvm_partitioned_latin1: &raw_cvm_partitioned_latin1
+_blc_common_dtypes: &blc_common_dtypes
+  TP_FUNDO: "${polars:Utf8}"
+  CNPJ_FUNDO: "${polars:Utf8}"
+  DENOM_SOCIAL: "${polars:Utf8}"
+  DT_COMPTC: "${polars:Utf8}"
+  TP_APLIC: "${polars:Utf8}"
+  TP_ATIVO: "${polars:Utf8}"
+  EMISSOR_LIGADO: "${polars:Utf8}"
+  TP_NEGOC: "${polars:Utf8}"
+  QT_VENDA_NEGOC: "${polars:Float64}"
+  VL_VENDA_NEGOC: "${polars:Float64}"
+  QT_AQUIS_NEGOC: "${polars:Float64}"
+  VL_AQUIS_NEGOC: "${polars:Float64}"
+  QT_POS_FINAL: "${polars:Float64}"
+  VL_MERC_POS_FINAL: "${polars:Float64}"
+  VL_CUSTO_POS_FINAL: "${polars:Float64}"
+  DT_CONFID_APLIC: "${polars:Utf8}"
+
+_raw_cvm_partitioned: &_raw_cvm_partitioned
   type: partitions.PartitionedDataset
   dataset:
     type: polars.CSVDataset
     load_args:
       separator: ";"
       encoding: "latin1"
-      ignore_errors: true  # ignore few data inconsistency issues
+      ignore_errors: false
+      truncate_ragged_lines: false
 
 raw_anbima_fund_characteristics:
   type: pandas.ExcelDataset
   filepath: data/01_raw/anbima/fundos-175-caracteristicas-publico-16-11-2025-22-53-30.xlsx
 
 raw_cvm_monthly_fund_data:
-  <<: *raw_cvm_partitioned_latin1
+  <<: *_raw_cvm_partitioned
   path: data/01_raw/cvm/data/pl
+  dataset:
+    type: polars.CSVDataset
+    load_args:
+      separator: ";"
+      encoding: "latin1"
+      ignore_errors: false
+      truncate_ragged_lines: false
+      dtypes:
+        TP_FUNDO: "${polars:Utf8}"
+        CNPJ_FUNDO: "${polars:Utf8}"
+        DENOM_SOCIAL: "${polars:Utf8}"
+        DT_COMPTC: "${polars:Utf8}"
+        VL_PATRIM_LIQ: "${polars:Float64}"
 
 raw_cvm_blc_1_data:
-  <<: *raw_cvm_partitioned_latin1
+  <<: *_raw_cvm_partitioned
   path: data/01_raw/cvm/data/blc_1
+  dataset:
+    type: polars.CSVDataset
+    load_args:
+      separator: ";"
+      encoding: "latin1"
+      ignore_errors: false
+      truncate_ragged_lines: false
+      dtypes:
+        <<: *blc_common_dtypes
+        TP_TITPUB: "${polars:Utf8}"
+        CD_ISIN: "${polars:Utf8}"
+        CD_SELIC: "${polars:Utf8}"
+        DT_EMISSAO: "${polars:Utf8}"
+        DT_VENC: "${polars:Utf8}"
 
 raw_cvm_blc_2_data:
-  <<: *raw_cvm_partitioned_latin1
+  <<: *_raw_cvm_partitioned
   path: data/01_raw/cvm/data/blc_2
+  dataset:
+    type: polars.CSVDataset
+    load_args:
+      separator: ";"
+      encoding: "latin1"
+      ignore_errors: false
+      truncate_ragged_lines: false
+      dtypes:
+        <<: *blc_common_dtypes
+        CNPJ_FUNDO_COTA: "${polars:Utf8}"
+        NM_FUNDO_COTA: "${polars:Utf8}"
 
 raw_cvm_blc_3_data:
-  <<: *raw_cvm_partitioned_latin1
+  <<: *_raw_cvm_partitioned
   path: data/01_raw/cvm/data/blc_3
+  dataset:
+    type: polars.CSVDataset
+    load_args:
+      separator: ";"
+      encoding: "latin1"
+      ignore_errors: false
+      truncate_ragged_lines: false
+      dtypes:
+        <<: *blc_common_dtypes
+        CD_SWAP: "${polars:Utf8}"
+        DS_SWAP: "${polars:Utf8}"
 
 raw_cvm_blc_4_data:
-  <<: *raw_cvm_partitioned_latin1
+  <<: *_raw_cvm_partitioned
   path: data/01_raw/cvm/data/blc_4
+  dataset:
+    type: polars.CSVDataset
+    load_args:
+      separator: ";"
+      encoding: "latin1"
+      ignore_errors: false
+      truncate_ragged_lines: false
+      dtypes:
+        <<: *blc_common_dtypes
+        CD_ATIVO: "${polars:Utf8}"
+        DS_ATIVO: "${polars:Utf8}"
+        CD_ISIN: "${polars:Utf8}"
+        DT_INI_VIGENCIA: "${polars:Utf8}"
+        DT_FIM_VIGENCIA: "${polars:Utf8}"
 
 raw_cvm_blc_5_data:
-  <<: *raw_cvm_partitioned_latin1
+  <<: *_raw_cvm_partitioned
   path: data/01_raw/cvm/data/blc_5
+  dataset:
+    type: polars.CSVDataset
+    load_args:
+      separator: ";"
+      encoding: "latin1"
+      ignore_errors: false
+      truncate_ragged_lines: false
+      dtypes:
+        <<: *blc_common_dtypes
+        CNPJ_EMISSOR: "${polars:Utf8}"
+        EMISSOR: "${polars:Utf8}"
+        DT_VENC: "${polars:Utf8}"
+        TITULO_POSFX: "${polars:Utf8}"
+        CD_INDEXADOR_POSFX: "${polars:Utf8}"
+        DS_INDEXADOR_POSFX: "${polars:Utf8}"
+        PR_INDEXADOR_POSFX: "${polars:Float64}"
+        PR_CUPOM_POSFX: "${polars:Float64}"
+        PR_TAXA_PREFX: "${polars:Float64}"
+        RISCO_EMISSOR: "${polars:Utf8}"
+        AG_RISCO: "${polars:Utf8}"
+        DT_RISCO: "${polars:Utf8}"
+        GRAU_RISCO: "${polars:Utf8}"
 
 raw_cvm_blc_6_data:
-  <<: *raw_cvm_partitioned_latin1
+  <<: *_raw_cvm_partitioned
   path: data/01_raw/cvm/data/blc_6
+  dataset:
+    type: polars.CSVDataset
+    load_args:
+      separator: ";"
+      encoding: "latin1"
+      ignore_errors: false
+      truncate_ragged_lines: false
+      dtypes:
+        <<: *blc_common_dtypes
+        PF_PJ_EMISSOR: "${polars:Utf8}"
+        CPF_CNPJ_EMISSOR: "${polars:Utf8}"
+        EMISSOR: "${polars:Utf8}"
+        DT_VENC: "${polars:Utf8}"
+        TITULO_POSFX: "${polars:Utf8}"
+        CD_INDEXADOR_POSFX: "${polars:Utf8}"
+        DS_INDEXADOR_POSFX: "${polars:Utf8}"
+        PR_INDEXADOR_POSFX: "${polars:Float64}"
+        PR_CUPOM_POSFX: "${polars:Float64}"
+        PR_TAXA_PREFX: "${polars:Float64}"
+        TITULO_CETIP: "${polars:Utf8}"
+        TITULO_GARANTIA: "${polars:Utf8}"
+        CNPJ_INSTITUICAO_FINANC_COOBR: "${polars:Utf8}"
 
 raw_cvm_blc_7_data:
-  <<: *raw_cvm_partitioned_latin1
+  <<: *_raw_cvm_partitioned
   path: data/01_raw/cvm/data/blc_7
+  dataset:
+    type: polars.CSVDataset
+    load_args:
+      separator: ";"
+      encoding: "latin1"
+      ignore_errors: false
+      truncate_ragged_lines: false
+      dtypes:
+        <<: *blc_common_dtypes
+        INVEST_COLETIVO: "${polars:Utf8}"
+        INVEST_COLETIVO_GESTOR: "${polars:Utf8}"
+        EMISSOR: "${polars:Utf8}"
+        DT_VENC: "${polars:Utf8}"
+        CD_PAIS: "${polars:Utf8}"
+        PAIS: "${polars:Utf8}"
+        CD_BV_MERC: "${polars:Utf8}"
+        BV_MERC: "${polars:Utf8}"
+        CD_ATIVO_BV_MERC: "${polars:Utf8}"
+        RISCO_EMISSOR: "${polars:Utf8}"
+        AG_RISCO: "${polars:Utf8}"
+        DT_RISCO: "${polars:Utf8}"
+        GRAU_RISCO: "${polars:Utf8}"
+        DS_ATIVO_EXTERIOR: "${polars:Utf8}"
+        QT_ATIVO_EXTERIOR: "${polars:Float64}"
+        VL_ATIVO_EXTERIOR: "${polars:Float64}"
 
 raw_cvm_blc_8_data:
-  <<: *raw_cvm_partitioned_latin1
+  <<: *_raw_cvm_partitioned
   path: data/01_raw/cvm/data/blc_8
+  dataset:
+    type: polars.CSVDataset
+    load_args:
+      separator: ";"
+      encoding: "latin1"
+      ignore_errors: false
+      truncate_ragged_lines: false
+      dtypes:
+        <<: *blc_common_dtypes
+        DS_ATIVO: "${polars:Utf8}"
+        PF_PJ_EMISSOR: "${polars:Utf8}"
+        CPF_CNPJ_EMISSOR: "${polars:Utf8}"
+        EMISSOR: "${polars:Utf8}"
 
 int_period_fund_data:
-  <<: *polars_csvdataset_defaults
+  <<: *_polars_csvdataset_defaults
   filepath: data/02_intermediate/int_period_fund_data.csv
 
 int_funds_in_scope:
-  <<: *polars_csvdataset_defaults
+  <<: *_polars_csvdataset_defaults
   filepath: data/02_intermediate/int_funds_in_scope.csv
 
 int_fund_characteristics:
-  <<: *polars_csvdataset_defaults
+  <<: *_polars_csvdataset_defaults
   filepath: data/02_intermediate/int_fund_characteristics.csv
 
 pri_nav_per_period:
-  <<: *polars_csvdataset_defaults
+  <<: *_polars_csvdataset_defaults
   filepath: data/03_primary/pri_nav_per_period.csv
 
 pri_returns_per_fund:
-  <<: *polars_csvdataset_defaults
-  filepath: data/03_primary/pri_returns_per_fund.csv
+  <<: *_polars_csvdataset_defaults
+  filepath: data/03_primary/pri_returns_per_period.csv
 
 pri_characteristics:
-  <<: *polars_csvdataset_defaults
+  <<: *_polars_csvdataset_defaults
   filepath: data/03_primary/pri_characteristics.csv
 
 pri_fund_managers:
-  <<: *polars_csvdataset_defaults
+  <<: *_polars_csvdataset_defaults
   filepath: data/03_primary/pri_fund_managers.csv
 
 pri_instrument_prices:
-  <<: *polars_csvdataset_defaults
+  <<: *_polars_csvdataset_defaults
   filepath: data/03_primary/pri_instrument_prices.csv
 
-pri_composition:
-  <<: *polars_csvdataset_defaults
-  filepath: data/03_primary/pri_composition.csv
-
 pri_instrument_rating:
-  <<: *polars_csvdataset_defaults
+  <<: *_polars_csvdataset_defaults
   filepath: data/03_primary/pri_instrument_rating.csv
 
-
-
 fea_liquidity_per_fund:
-  <<: *polars_csvdataset_defaults
+  <<: *_polars_csvdataset_defaults
   filepath: data/04_feature/fea_liquidity.csv
 
 fea_concentration_per_fund:
-  <<: *polars_csvdataset_defaults
+  <<: *_polars_csvdataset_defaults
   filepath: data/04_feature/fea_concentration.csv
 
 fea_asset_diversification_per_fund:
-  <<: *polars_csvdataset_defaults
+  <<: *_polars_csvdataset_defaults
   filepath: data/04_feature/fea_asset_diversification.csv
 
 fea_credit_quality_per_fund:
-  <<: *polars_csvdataset_defaults
+  <<: *_polars_csvdataset_defaults
   filepath: data/04_feature/fea_credit_quality.csv
 
 fea_fund_age_per_fund:
-  <<: *polars_csvdataset_defaults
+  <<: *_polars_csvdataset_defaults
   filepath: data/04_feature/fea_fund_age.csv
 
 fea_features_per_fund:
-  <<: *polars_csvdataset_defaults
+  <<: *_polars_csvdataset_defaults
   filepath: data/04_feature/fea_features_per_fund.csv
 
 fea_sharpe_ratio_per_fund:
-  <<: *polars_csvdataset_defaults
+  <<: *_polars_csvdataset_defaults
   filepath: data/04_feature/fea_sharpe_ratio.csv
 
 fea_volatility_per_fund:
-  <<: *polars_csvdataset_defaults
+  <<: *_polars_csvdataset_defaults
   filepath: data/04_feature/fea_volatility.csv
 
 mi_scoring_input:
-  <<: *polars_csvdataset_defaults
+  <<: *_polars_csvdataset_defaults
   filepath: data/05_model_input/mi_scoring_input.csv
 
 mo_scores_per_profile:
-  <<: *polars_csvdataset_defaults
+  <<: *_polars_csvdataset_defaults
   filepath: data/07_model_output/mo_scores_per_profile.csv
 
+mo_guardrail_mark:
+  <<: *_polars_csvdataset_defaults
+  filepath: data/07_model_output/mo_guardrail_mark.csv
+
 rpt_shortlist:
-  <<: *polars_csvdataset_defaults
+  <<: *_polars_csvdataset_defaults
   filepath: data/08_reporting/rpt_shortlist.csv
 
 rpt_complete_ranking:
-  <<: *polars_csvdataset_defaults
+  <<: *_polars_csvdataset_defaults
   filepath: data/08_reporting/rpt_complete_ranking.csv
+
+rpt_raw_data_validation_report:
+  <<: *_polars_csvdataset_defaults
+  filepath: data/08_reporting/rpt_raw_data_validation_report.csv
+
+rpt_dataframe_validation_report:
+  <<: *_polars_csvdataset_defaults
+  filepath: data/08_reporting/rpt_dataframe_validation_report.csv

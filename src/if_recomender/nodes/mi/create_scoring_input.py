@@ -1,5 +1,4 @@
 import polars as pl
-import numpy as np
 
 
 def mi_create_scoring_input(
@@ -8,20 +7,19 @@ def mi_create_scoring_input(
     normalization_upper_percentile: float,
     use_log_volatility: bool,
 ) -> pl.DataFrame:
-    """
-    Normalize features to 0-1 scale using percentile-based scaling.
+    """Normalize features to 0-1 scale using percentile-based scaling.
 
-    Applies log transformation to volatility, inverts HHI metrics, and uses Sharpe
-    fallback (12m → 3m). Higher scores = better for all metrics.
+    Inverts volatility and HHI metrics so higher scores = better for all.
+    Uses Sharpe 12m with 3m fallback.
 
     Args:
-        all_features_per_fund: Merged feature table
-        normalization_lower_percentile: Lower percentile bound
-        normalization_upper_percentile: Upper percentile bound
-        use_log_volatility: Apply log to volatility
+        all_features_per_fund: Merged features with raw metric values.
+        normalization_lower_percentile: Lower percentile for clipping (e.g., 0.05).
+        normalization_upper_percentile: Upper percentile for clipping (e.g., 0.95).
+        use_log_volatility: Whether to apply log transform to volatility.
 
     Returns:
-        DataFrame with normalized scores (0-1 scale)
+        DataFrame with cnpj and normalized score columns (0-1 scale).
     """
     combined = all_features_per_fund
 

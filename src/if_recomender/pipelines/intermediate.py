@@ -15,6 +15,8 @@ def intermediate_pipeline(**kwargs):
                     "params:anbima_fi_fund_types",
                     "params:anbima_accessability",
                     "params:min_data_period_per_fund",
+                    "params:remove_funds_w_negative_cvm_pl_values",
+                    "params:max_period",
                     "raw_anbima_fund_characteristics",
                     "raw_cvm_monthly_fund_data",
                 ],

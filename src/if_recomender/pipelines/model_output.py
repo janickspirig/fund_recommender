@@ -1,5 +1,13 @@
 from kedro.pipeline import pipeline, node
 from ..nodes.mo.scoring_per_profile import mo_scoring_per_profile
+from ..nodes.mo.guardrails import (
+    mo_guardrail_min_offer_per_issuer,
+    mo_guardrail_min_sharpe_12m,
+    mo_guardrail_min_sharpe_3m,
+    mo_guardrail_no_funds_wo_manager,
+    mo_guardrail_include_only_active_funds,
+    mo_guardrail_merge,
+)
 
 
 def model_output_pipeline(**kwargs):
@@ -10,6 +18,70 @@ def model_output_pipeline(**kwargs):
                 inputs=["mi_scoring_input", "params:investor_profiles"],
                 outputs="mo_scores_per_profile",
                 name="score_funds_per_profile",
-            )
+            ),
+            node(
+                func=mo_guardrail_min_offer_per_issuer,
+                inputs=[
+                    "mo_scores_per_profile",
+                    "pri_fund_managers",
+                    "pri_characteristics",
+                    "params:guardrails.min_offer_per_issuer",
+                ],
+                outputs="mo_gr_min_offer",
+                name="guardrail_min_offer_per_issuer",
+            ),
+            node(
+                func=mo_guardrail_min_sharpe_12m,
+                inputs=[
+                    "mo_scores_per_profile",
+                    "fea_sharpe_ratio_per_fund",
+                    "params:guardrails.min_threshold_sharpe_12m",
+                ],
+                outputs="mo_gr_sharpe_12m",
+                name="guardrail_min_sharpe_12m",
+            ),
+            node(
+                func=mo_guardrail_min_sharpe_3m,
+                inputs=[
+                    "mo_scores_per_profile",
+                    "fea_sharpe_ratio_per_fund",
+                    "params:guardrails.min_threshold_sharpe_3m",
+                ],
+                outputs="mo_gr_sharpe_3m",
+                name="guardrail_min_sharpe_3m",
+            ),
+            node(
+                func=mo_guardrail_no_funds_wo_manager,
+                inputs=[
+                    "mo_scores_per_profile",
+                    "pri_characteristics",
+                    "params:guardrails.no_funds_wo_manager",
+                ],
+                outputs="mo_gr_no_manager",
+                name="guardrail_no_funds_wo_manager",
+            ),
+            node(
+                func=mo_guardrail_include_only_active_funds,
+                inputs=[
+                    "mo_scores_per_profile",
+                    "pri_returns_per_fund",
+                    "params:max_period",
+                    "params:guardrails.include_only_active_funds",
+                ],
+                outputs="mo_gr_active_funds",
+                name="guardrail_include_only_active_funds",
+            ),
+            node(
+                func=mo_guardrail_merge,
+                inputs=[
+                    "mo_gr_min_offer",
+                    "mo_gr_sharpe_12m",
+                    "mo_gr_sharpe_3m",
+                    "mo_gr_no_manager",
+                    "mo_gr_active_funds",
+                ],
+                outputs="mo_guardrail_mark",
+                name="guardrail_merge",
+            ),
         ]
     )

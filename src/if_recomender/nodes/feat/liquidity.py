@@ -2,14 +2,15 @@ import polars as pl
 
 
 def feat_calculate_liquidity(characteristics: pl.DataFrame) -> pl.DataFrame:
-    """
-    Calculate liquidity score based on redemption days.
+    """Calculate liquidity score normalized from redemption days.
+
+    Higher score = faster redemption. Inactive funds get score of 0.
 
     Args:
-        characteristics: DataFrame with cnpj, redemption_days, is_active
+        characteristics: Fund characteristics with cnpj, redemption_days, is_active.
 
     Returns:
-        DataFrame with cnpj, redemption_days, is_active, liquidity_score
+        DataFrame with cnpj, redemption_days, is_active, liquidity_score (0-1).
     """
     active_funds = characteristics.filter(pl.col("is_active") == 1)
     min_days = active_funds["redemption_days"].min()

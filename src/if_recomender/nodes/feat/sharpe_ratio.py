@@ -3,16 +3,7 @@ import math
 
 
 def _subtract_months(period: int, months: int) -> int:
-    """
-    Subtract N months from a YYYYMM period.
-
-    Args:
-        period: Period in YYYYMM format (e.g., 202509)
-        months: Number of months to subtract
-
-    Returns:
-        Period in YYYYMM format after subtracting months
-    """
+    """Subtract N months from a YYYYMM period."""
     year = period // 100
     month = period % 100
 
@@ -27,18 +18,7 @@ def _subtract_months(period: int, months: int) -> int:
 
 
 def _get_n_month_window_periods(max_period: int, n_months: int) -> list[int]:
-    """
-    Get the list of N periods for the N-month window.
-
-    Window bounds: [max_period - (n-1), ..., max_period] (last N complete months in chronological order)
-
-    Args:
-        max_period: Maximum period in YYYYMM format
-        n_months: Number of months in the window (e.g., 12, 3, 1)
-
-    Returns:
-        List of N periods in chronological order [max_period - (n-1), ..., max_period]
-    """
+    """Get the last N periods ending at max_period in chronological order."""
     periods = []
     for i in range(n_months - 1, -1, -1):  # From (n-1) down to 0
         periods.append(_subtract_months(max_period, i))
@@ -52,19 +32,7 @@ def _calculate_sharpe_for_window(
     rf_monthly: float,
     epsilon_volatility: float = 1e-8,
 ) -> pl.DataFrame:
-    """
-    Calculate annualized Sharpe ratio for N-month window.
-
-    Args:
-        returns_sorted: DataFrame with cnpj, period, monthly_return
-        max_period: Latest period in YYYYMM format
-        n_months: Window size (12, 3, or 1)
-        rf_monthly: Monthly risk-free rate
-        epsilon_volatility: Minimum volatility threshold
-
-    Returns:
-        DataFrame with cnpj and sharpe_Nm column
-    """
+    """Calculate annualized Sharpe ratio for N-month window."""
     window_periods = _get_n_month_window_periods(max_period, n_months)
 
     window_returns = returns_sorted.filter(pl.col("period").is_in(window_periods))
@@ -86,19 +54,16 @@ def _calculate_sharpe_for_window(
         ]
     )
 
-    # excess return
     sharpe_per_fund = sharpe_per_fund.with_columns(
         [(pl.col("mean_return") - rf_monthly).alias("average_monthly_excess_return")]
     )
 
-    # monthly sharpe ratio
     sharpe_per_fund = sharpe_per_fund.with_columns(
         (pl.col("average_monthly_excess_return") / pl.col("std_return")).alias(
             "monthly_sharpe"
         )
     )
 
-    # annualize: sharpe = monthly_sharpe × sqrt(12)
     sharpe_per_fund = sharpe_per_fund.with_columns(
         [(pl.col("monthly_sharpe") * math.sqrt(12)).alias(sharpe_col)]
     )
@@ -124,20 +89,21 @@ def _calculate_sharpe_for_window(
 
 
 def feat_calculate_sharpe_ratio(
-    returns_per_fund: pl.DataFrame, risk_free_rate_annual: float
+    returns_per_fund: pl.DataFrame, risk_free_rate_annual: float, max_period: int
 ) -> pl.DataFrame:
-    """
-    Calculate annualized Sharpe ratios for 12-month and 3-month windows.
+    """Calculate annualized Sharpe ratios for 12-month and 3-month windows.
+
+    Funds with incomplete data or near-zero volatility get null Sharpe values.
 
     Args:
-        returns_per_fund: DataFrame with cnpj, period, monthly_return
-        risk_free_rate_annual: Annual risk-free rate (e.g., 0.114 for 11.4%)
+        returns_per_fund: Monthly returns with cnpj, period, monthly_return.
+        risk_free_rate_annual: Annual risk-free rate (e.g., 0.1371 for CDI).
+        max_period: Most recent period in YYYYMM format.
 
     Returns:
-        DataFrame with cnpj, sharpe_12m, sharpe_3m (annualized)
+        DataFrame with cnpj, sharpe_12m, sharpe_3m (annualized).
     """
     returns_sorted = returns_per_fund.sort(["cnpj", "period"])
-    max_period = returns_sorted["period"].max()
 
     rf_monthly = (1 + risk_free_rate_annual) ** (1 / 12) - 1
 

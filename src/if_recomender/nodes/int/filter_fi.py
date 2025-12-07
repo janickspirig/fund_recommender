@@ -1,6 +1,11 @@
+import calendar
+from datetime import datetime
+
 import polars as pl
 import pandas as pd
 from typing import Dict, Tuple
+
+from if_recomender.utils import pl_cnpj_to_numeric
 
 
 def int_filter_fixed_income_funds(
@@ -9,23 +14,29 @@ def int_filter_fixed_income_funds(
     anbima_fi_fund_types: str,
     anbima_accessability: list,
     min_data_period_per_fund: int,
+    remove_funds_w_negative_cvm_pl_values: bool,
+    max_period: int,
     anbima_fund_characteristics: pd.DataFrame,
     cvm_monthly_fund_data: Dict[str, pl.DataFrame],
 ) -> Tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame]:
-    """
-    Filter fixed income funds present in both CVM and ANBIMA data.
+    """Filter fixed income funds present in both CVM and ANBIMA data.
+
+    Applies fund type, accessibility, and negative NAV filters to build
+    the universe of funds in scope for analysis.
 
     Args:
-        num_period_months: Number of recent months to include
-        cvm_fi_fund_types: CVM fund types to filter
-        anbima_fi_fund_types: ANBIMA categories to filter
-        anbima_accessability: Accessibility types allowed
-        min_data_period_per_fund: Minimum periods required
-        anbima_fund_characteristics: ANBIMA data (pandas)
-        cvm_monthly_fund_data: CVM monthly data dict (polars)
+        num_period_months: Number of recent months to include (null = all).
+        cvm_fi_fund_types: CVM fund types to include.
+        anbima_fi_fund_types: ANBIMA categories to include.
+        anbima_accessability: Allowed investor accessibility types.
+        min_data_period_per_fund: Minimum periods required per fund.
+        remove_funds_w_negative_cvm_pl_values: Whether to exclude negative NAV funds.
+        max_period: Most recent period in YYYYMM format.
+        anbima_fund_characteristics: ANBIMA fund metadata (pandas DataFrame).
+        cvm_monthly_fund_data: CVM monthly data partitioned by period.
 
     Returns:
-        Tuple of (period_data, characteristics, spine) DataFrames
+        Tuple of (cvm_period_data, anbima_filtered, funds_in_scope) DataFrames.
     """
     # no Polars ExcelDataset in kedro, thus we load with pandas
     anbima_fund_characteristics = pl.from_pandas(anbima_fund_characteristics)
@@ -34,12 +45,19 @@ def int_filter_fixed_income_funds(
         [int(key.replace(".csv", "")) for key in cvm_monthly_fund_data.keys()],
         reverse=True,
     )
-    selected_months = available_months[:num_period_months]
+    if num_period_months:
+        selected_months = available_months[:num_period_months]
+    else:
+        selected_months = available_months
 
     cvm_dfs = []
     for month in selected_months:
         file_name = f"{month}.csv"
         df = cvm_monthly_fund_data[file_name]()
+        if "TP_FUNDO" in df.columns:
+            df = df.rename(
+                {"TP_FUNDO": "TP_FUNDO_CLASSE", "CNPJ_FUNDO": "CNPJ_FUNDO_CLASSE"}
+            )
         cvm_dfs.append(df)
 
     cvm_all_data = pl.concat(cvm_dfs)
@@ -48,14 +66,18 @@ def int_filter_fixed_income_funds(
         pl.col("TP_FUNDO_CLASSE").is_in(cvm_fi_fund_types)
     )
 
-    cvm_fi_data = cvm_fi_data.with_columns(
-        [
-            pl.col("CNPJ_FUNDO_CLASSE")
-            .str.replace_all(r"\D", "")
-            .cast(pl.UInt64)
-            .alias("cnpj")
-        ]
-    )
+    if remove_funds_w_negative_cvm_pl_values:
+        dt = datetime.strptime(str(max_period), "%Y%m")
+        last_day = calendar.monthrange(dt.year, dt.month)[1]
+        latest_period = dt.replace(day=last_day).strftime("%Y-%m-%d")
+        funds_to_remove = cvm_fi_data.filter(
+            pl.col("DT_COMPTC") == latest_period, pl.col("VL_PATRIM_LIQ") <= 0
+        )["CNPJ_FUNDO_CLASSE"]
+        cvm_fi_data = cvm_fi_data.filter(
+            ~pl.col("CNPJ_FUNDO_CLASSE").is_in(funds_to_remove)
+        )
+
+    cvm_fi_data = cvm_fi_data.with_columns(cnpj=pl_cnpj_to_numeric("CNPJ_FUNDO_CLASSE"))
 
     cvm_cnpjs = cvm_fi_data.select("cnpj").unique()
 
@@ -88,6 +110,7 @@ def int_filter_fixed_income_funds(
             pl.col("VL_PATRIM_LIQ"),
             pl.col("TP_FUNDO_CLASSE"),
         )
+        .unique(subset=["cnpj", "DT_COMPTC"])
         .sort(["cnpj", "DT_COMPTC"])
     )
 
