@@ -22,7 +22,11 @@ def feature_pipeline(**kwargs):
             ),
             node(
                 func=feat_calculate_sharpe_ratio,
-                inputs=["pri_returns_per_fund", "params:risk_free_rate_annual"],
+                inputs=[
+                    "pri_returns_per_fund",
+                    "params:risk_free_rate_annual",
+                    "params:max_period",
+                ],
                 outputs="fea_sharpe_ratio_per_fund",
                 name="calculate_sharpe_ratio",
             ),
@@ -34,32 +38,22 @@ def feature_pipeline(**kwargs):
             ),
             node(
                 func=feat_calculate_concentration,
-                inputs=[
-                    "pri_composition",
-                    "pri_instrument_prices",
-                    "pri_nav_per_period",
-                ],
+                inputs=["pri_instrument_prices"],
                 outputs="fea_concentration_per_fund",
                 name="calculate_concentration",
             ),
             node(
                 func=feat_calculate_asset_diversification,
-                inputs=[
-                    "pri_composition",
-                    "pri_instrument_prices",
-                    "pri_nav_per_period",
-                ],
+                inputs=["pri_instrument_prices"],
                 outputs="fea_asset_diversification_per_fund",
                 name="calculate_asset_diversification",
             ),
             node(
                 func=feat_calculate_credit_quality,
                 inputs=[
-                    "pri_composition",
                     "pri_instrument_rating",
                     "pri_instrument_prices",
-                    "params:credit_rating_order",
-                    "params:credit_rating_investment_grade_threshold",
+                    "params:credit_rating",
                 ],
                 outputs="fea_credit_quality_per_fund",
                 name="calculate_credit_quality",
