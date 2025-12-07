@@ -1,4 +1,9 @@
 # ====================================
+# GLOBAL COMPUTED VALUES
+# ====================================
+max_period: ${globals:max_period}
+
+# ====================================
 # OUTPUT CONFIGURATION
 # ====================================
 n_top_funds_output: 5
@@ -8,30 +13,17 @@ n_top_funds_output: 5
 # ====================================
 investor_profiles:
   conservative:
-    liquidity: 0.20           
-    risk_reward: 0.20         
-    volatility: 0.15          
+    liquidity: 0.05       
+    risk_reward: 0.10         
+    volatility: 0.30         
     concentration: 0.10       
     asset_diversification: 0.10  
-    fund_age: 0.10            
+    fund_age: 0.20       
     credit_quality: 0.15      
     allowed_fund_subtypes:
-    - Renda Fixa Simples
-    - Renda Fixa Indexados
-    #- Renda Fixa Dívida Externa
-    #- Renda Fixa Duração Alta Crédito Livre
-    #- Renda Fixa Duração Alta Grau de Investimento
-    #- Renda Fixa Duração Alta Soberano
-    #- Renda Fixa Duração Baixa Crédito Livre
-    #- Renda Fixa Duração Baixa Grau de Investimento
-    #- Renda Fixa Duração Baixa Soberano
-    #- Renda Fixa Duração Livre Crédito Livre
-    #- Renda Fixa Duração Livre Grau de Investimento
-    #- Renda Fixa Duração Livre Soberano
-    #- Renda Fixa Duração Média Crédito Livre
-    #- Renda Fixa Duração Média Grau de Investimento
-    #- Renda Fixa Duração Média Soberano
-    #- Renda Fixa Investimento no Exterior
+      - Renda Fixa Simples
+      - Renda Fixa Indexados
+      - Renda Fixa Duração Baixa Soberano
 
   moderate:
     liquidity: 0.13           
@@ -40,7 +32,7 @@ investor_profiles:
     concentration: 0.08       
     asset_diversification: 0.13  
     fund_age: 0.08            
-    credit_quality: 0.10    
+    credit_quality: 0.10   
   
   aggressive:
     liquidity: 0.08           
@@ -49,51 +41,86 @@ investor_profiles:
     concentration: 0.05       
     asset_diversification: 0.08  
     fund_age: 0.07            
-    credit_quality: 0.07      
+    credit_quality: 0.07     
 
   speculator:
     liquidity: 0.03           
-    risk_reward: 0.68         
-    volatility: 0.12          
+    risk_reward: 0.60         
+    volatility: 0.20         
     concentration: 0.03       
     asset_diversification: 0.03  
     fund_age: 0.03            
-    credit_quality: 0.08      
+    credit_quality: 0.08
     target_investor_profile:
-    #- Qualificado
     - Profissional
+    #- Qualificado
     #- Geral
     #- ND
 
 # ====================================
 # CREDIT RATING
 # ====================================
-credit_rating_order:
-  - AAA+
-  - BRAAA
-  - AAA(BR
-  - BRAA+
-  - AA(BRA
-  - AA-(BR
-  - BBB-(B
-  - Ba1
-  - Ba2
-  - BA2.BR
-
-credit_rating_investment_grade_threshold: BBB-(B
+# Ratings not in order list are treated as unrated (null score)
+# Ignored data quality issues: ALTO, F, Pend (pending)
+credit_rating:
+  order: &credit_rating_order
+    - AAA+
+    - AAA
+    - BRAAA
+    - AAA(BR
+    - Aaa.br
+    - BRAA+
+    - AA+
+    - AA
+    - AA(BRA
+    - AA-(BR
+    - AA-
+    - A+(BRA
+    - A
+    - A-
+    - BBB+
+    - BAA2.B
+    - BBB-(B
+    - BRBBB-
+    - Ba1
+    - Ba2
+    - BA2.BR
+    - BB-
+  weight_investment_grade: 0.6
+  weight_avg_rating_score: 0.4
+  credit_rating_investment_grade_threshold: BRBBB-
 
 # ====================================
 # GUARDRAILS
 # ====================================
 guardrails:
-  min_offer_count_provider: 5
-  exclude_funds_without_manager: false
+  min_offer_per_issuer:
+    active: true
+    params: 
+      min_offer_count: 5
+  
+  min_threshold_sharpe_12m: 
+    active: true
+    params: 
+      min_sharpe_12m: 0.0
+
+  min_threshold_sharpe_3m: 
+    active: false
+    params: 
+      min_sharpe_3m: 0.0
+
+  no_funds_wo_manager:
+    active: false
+  
+  include_only_active_funds:
+    active: true
 
 # ====================================
 # DATA SCOPE
 # ====================================
-num_period_months: 33
+num_period_months: null # all available months
 min_data_period_per_fund: 3
+remove_funds_w_negative_cvm_pl_values: true # 24 funds with negative NAV value in latest period (202509)
 
 cvm_fi_fund_types:
  - CLASSES - FIF
@@ -110,38 +137,123 @@ anbima_accessability:
 # RISK & SCORING
 # ====================================
 risk_free_rate_annual: 0.1371  # CDI on 23/11
-fund_age_cap_years: 20.0
+
+fund_age_cap_years: 30.0
 
 normalization_lower_percentile: 0.05
 normalization_upper_percentile: 0.95
 use_log_volatility: true
 
-sharpe_ratio:
-  min_periods_12m: 12
-  epsilon_volatility: 1e-8
+# ====================================
+# RAW DATA VALIDATION
+# ====================================
+# Pre-parsing validations run before pipeline execution via Kedro hook
+# Runs BEFORE catalog.load() to fix known issues:
+# << list here the known issues that are checked in the files >>
+#
+# Strategies per validation: fix | ignore
+#   - fix: Repair data in-place (only where a fix method exists)
+#   - ignore: Remove affected lines entirely
+data_validation:
+  enabled: true
+  report_include_passed: false
+  
+  datasets:
+    raw_cvm_monthly_fund_data:
+      validations:
+        check_redundant_quotes: fix
+        check_malformed_quotes: fix
+    
+    raw_cvm_blc_1_data:
+      validations:
+        check_redundant_quotes: fix
+        check_malformed_quotes: fix
+    
+    raw_cvm_blc_2_data:
+      validations:
+        check_redundant_quotes: fix
+        check_malformed_quotes: fix
+    
+    raw_cvm_blc_3_data:
+      validations:
+        check_redundant_quotes: fix
+        check_malformed_quotes: fix
+    
+    raw_cvm_blc_4_data:
+      validations:
+        check_redundant_quotes: fix
+        check_malformed_quotes: fix
+    
+    raw_cvm_blc_5_data:
+      validations:
+        check_redundant_quotes: fix
+        check_malformed_quotes: fix
+    
+    raw_cvm_blc_6_data:
+      validations:
+        check_redundant_quotes: fix
+        check_malformed_quotes: fix
+    
+    raw_cvm_blc_7_data:
+      validations:
+        check_redundant_quotes: fix
+        check_malformed_quotes: fix
+    
+    ## ignored as it seems to not contain real instruments
+    # raw_cvm_blc_8_data:
+    #  validations:
+    #    check_redundant_quotes: fix
+    #    check_malformed_quotes: fix
+    
+# ====================================
+# DATAFRAME VALIDATIONS
+# ====================================
+# Validations run after datasets are loaded (input of nodes) or saved (output of nodes)
+# These validate DataFrame content and report issues (no fixes, just logging).
+dataframe_validation:
+  report_include_passed: false
 
-# ====================================
-# COMPOSITION FILTERING
-# ====================================
-# exclude accounting entries from blc_8 (OtherAssets) which are not investment positions
-blc_8_accounting_entry_patterns:
-  - "Valores a Pagar"
-  - "ValoresaPagar"
-  - "Valores_a_Pagar"
-  - "Valores a Receber"
-  - "ValoresaReceber"
-  - "Valores_a_Receber"
-  - "Valores a Liquidar"
-  - "Valores_a_Liquidar"
-  - "Disponibilidade"
-  - "Disponibilidades"
-  - "Valores a Re ceber"
-  - "Valores a Receb"
-  - "CONTA CORRENTE"
-  - "OBRIG"  
-  - "BANCO"  
-  - "CAIXA"  
-  - "AUDITORIA"
-  - "A PAGAR"  
-  - "PREMIO"  
-  - "DIFERIR"  
+input_validations:
+  raw_cvm_monthly_fund_data:
+    validations:
+      validate_uniqueness:
+        group_columns:
+        - CNPJ_FUNDO
+        - DT_COMPTC
+        - VL_PATRIM_LIQ
+      validate_bounds:
+        value_column: VL_PATRIM_LIQ
+        identifier_column: CNPJ_FUNDO
+        lower_bound: 0
+        upper_bound: null
+
+  raw_cvm_blc_5_data:
+    validations:
+      validate_allowed_values:
+        value_column: GRAU_RISCO
+        allowed_values: *credit_rating_order
+output_validations:
+  pri_returns_per_fund:
+    validations:
+      validate_time_completeness:
+        time_column: period
+        group_column: cnpj
+      validate_uniqueness:
+        group_columns:
+        - cnpj
+        - period
+  pri_nav_per_period:
+    validations:
+      validate_time_completeness:
+        time_column: period
+        group_column: cnpj
+      validate_uniqueness:
+        group_columns:
+        - cnpj
+        - period
+  pri_instrument_prices:
+    validations:
+      validate_uniqueness:
+        group_columns:
+        - instrument_id
+        - period
