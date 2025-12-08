@@ -194,12 +194,59 @@ def mo_guardrail_include_only_active_funds(
     )
 
 
+def mo_guardrail_no_extreme_returns(
+    scores_per_profile: pl.DataFrame,
+    returns_per_fund: pl.DataFrame,
+    config: Dict[str, Any],
+) -> pl.DataFrame:
+    """Filter funds with extreme monthly returns (likely capital flow issues).
+
+    Funds with any monthly return exceeding the threshold are flagged.
+    This catches cases where NAV changes due to subscriptions/redemptions
+    are incorrectly interpreted as investment returns.
+
+    Args:
+        scores_per_profile: Scored funds with cnpj.
+        returns_per_fund: Returns data with cnpj, period, monthly_return.
+        config: Config with active (bool) and params.max_abs_monthly_return (float).
+
+    Returns:
+        DataFrame with cnpj, failed (bool).
+    """
+    cnpjs = scores_per_profile.select("cnpj").unique()
+
+    if not config.get("active", False):
+        return cnpjs.with_columns(pl.lit(False).alias("failed"))
+
+    max_return = config.get("params", {}).get("max_abs_monthly_return", 1.0)
+
+    extreme_funds = (
+        returns_per_fund.filter(
+            (pl.col("monthly_return") > max_return)
+            | (pl.col("monthly_return") < -max_return)
+        )
+        .select("cnpj")
+        .unique()
+        .with_columns(pl.lit(True).alias("has_extreme_return"))
+    )
+
+    enriched = cnpjs.join(extreme_funds, on="cnpj", how="left")
+
+    return enriched.select(
+        [
+            "cnpj",
+            pl.col("has_extreme_return").fill_null(False).alias("failed"),
+        ]
+    )
+
+
 def mo_guardrail_merge(
     gr_min_offer: pl.DataFrame,
     gr_sharpe_12m: pl.DataFrame,
     gr_sharpe_3m: pl.DataFrame,
     gr_no_manager: pl.DataFrame,
     gr_active_funds: pl.DataFrame,
+    gr_extreme_returns: pl.DataFrame,
 ) -> pl.DataFrame:
     """Merge all guardrail results into pass/fail with failed_guardrails list.
 
@@ -209,6 +256,7 @@ def mo_guardrail_merge(
         gr_sharpe_3m: Result from min_sharpe_3m guardrail.
         gr_no_manager: Result from no_funds_wo_manager guardrail.
         gr_active_funds: Result from include_only_active_funds guardrail.
+        gr_extreme_returns: Result from no_extreme_returns guardrail.
 
     Returns:
         DataFrame with cnpj, pass_guardrail (bool), failed_guardrails (comma-separated).
@@ -219,6 +267,7 @@ def mo_guardrail_merge(
         ("min_sharpe_3m", gr_sharpe_3m),
         ("no_funds_wo_manager", gr_no_manager),
         ("include_only_active_funds", gr_active_funds),
+        ("no_extreme_returns", gr_extreme_returns),
     ]
 
     result = gr_min_offer.select("cnpj")

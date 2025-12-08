@@ -6,6 +6,7 @@ from ..nodes.mo.guardrails import (
     mo_guardrail_min_sharpe_3m,
     mo_guardrail_no_funds_wo_manager,
     mo_guardrail_include_only_active_funds,
+    mo_guardrail_no_extreme_returns,
     mo_guardrail_merge,
 )
 
@@ -72,6 +73,16 @@ def model_output_pipeline(**kwargs):
                 name="guardrail_include_only_active_funds",
             ),
             node(
+                func=mo_guardrail_no_extreme_returns,
+                inputs=[
+                    "mo_scores_per_profile",
+                    "pri_returns_per_fund",
+                    "params:guardrails.no_extreme_returns",
+                ],
+                outputs="mo_gr_extreme_returns",
+                name="guardrail_no_extreme_returns",
+            ),
+            node(
                 func=mo_guardrail_merge,
                 inputs=[
                     "mo_gr_min_offer",
@@ -79,6 +90,7 @@ def model_output_pipeline(**kwargs):
                     "mo_gr_sharpe_3m",
                     "mo_gr_no_manager",
                     "mo_gr_active_funds",
+                    "mo_gr_extreme_returns",
                 ],
                 outputs="mo_guardrail_mark",
                 name="guardrail_merge",
