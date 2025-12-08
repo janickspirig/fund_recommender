@@ -115,6 +115,11 @@ guardrails:
   include_only_active_funds:
     active: true
 
+  no_extreme_returns:
+    active: true
+    params:
+      max_abs_monthly_return: 1.0
+
 # ====================================
 # DATA SCOPE
 # ====================================
