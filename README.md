@@ -210,7 +210,12 @@ guardrails:
     active: false
 
   include_only_active_funds:      # Exclude funds without recent data (PL)
-    active: true                 
+    active: true
+
+  no_extreme_returns:             # Exclude funds with extreme monthly returns (capital flow issues)
+    active: true
+    params:
+      max_abs_monthly_return: 1.0  # 100% threshold                 
 ```
 
 Failed guardrails are tracked in `mo_guardrail_mark.csv` with a `failed_guardrails` column showing which checks each fund failed.
@@ -362,6 +367,22 @@ FI;10.705.306/0001-05;URCA FUNDO DE INVESTIMENTO RF...;2023-06-30;-184655.57
 
 ---
 
+### 5. Extreme Returns from Capital Flows
+
+**Issue**: Returns calculated from NAV changes (`VL_PATRIM_LIQ`) incorrectly capture capital flows (subscriptions/redemptions) as investment returns. ~24% of funds (813 out of 3,431) have at least one monthly return exceeding ±100%.
+
+**Example** (CNPJ 50111345000190):
+```
+Period 202306: NAV = 2,102,555
+Period 202307: NAV = 87,883,376  → Calculated "return" = 4,079%
+```
+
+**Resolution**: 
+- Added `no_extreme_returns` guardrail to filter funds with any monthly return > ±100%
+- Long-term fix: Use quota value (`VL_QUOTA`) from [CVM Daily Fund Report](https://dados.gov.br/dados/conjuntos-dados/fundos-de-investimento-documentos-informe-dirio) instead of NAV
+
+---
+
 ## Limitations & Next Steps
 
 **Current Limitations**:
@@ -371,14 +392,15 @@ FI;10.705.306/0001-05;URCA FUNDO DE INVESTIMENTO RF...;2023-06-30;-184655.57
 - Limited to Brazilian fixed income funds
 
 **Recommended Enhancements**:
-1. **Automated Data Pipeline**: Integrate ANBIMA and CVM APIs with Kedro hooks to enable automatic data refresh before pipeline run
-
-2. **File format**: Migrate to .parquet format or Databricks delta tables to enable scalable approach for longer historical data
-3. **Feature Engineering**: Add duration, credit spread, manager performance, etc.
-4. **Parameter Optimization**: Use Bayesian optimization or ML to learn optimal weights
-5. **Backtesting**: Validate recommendations against historical performance
-6. **Unit tests**: Add comprehensive unit tests with pytest to test logic of each pipeline node in isolation
-7. **User Interface**: Build web dashboard for interactive fund exploration
-8. ...
+1. **Use Quota Value for Returns**: Replace NAV-based return calculations with quota value (`VL_QUOTA`) from the [CVM Daily Fund Report (Informe Diário)](https://dados.gov.br/dados/conjuntos-dados/fundos-de-investimento-documentos-informe-dirio). Currently, returns are calculated from `VL_PATRIM_LIQ` (total NAV), which incorrectly interprets capital flows (subscriptions/redemptions) as investment returns -> daily quota value is adjusted for these flows and represents true investment performance
+2. **Automated Data Pipeline**: Integrate ANBIMA and CVM APIs with Kedro hooks to enable automatic data refresh before pipeline run
+3. **File format**: Migrate to .parquet format or Databricks delta tables to enable scalable approach for longer historical data
+4. **Feature Engineering**: Add duration, credit spread, manager performance, etc.
+5. **Expand DataFrame validations**: Add more validations and leverage libraries like pandera, great expectations etc.
+6. **Parameter Optimization**: Use Bayesian optimization or ML to learn optimal weights
+7. **Backtesting**: Validate recommendations against historical performance
+8. **Unit tests**: Add comprehensive unit tests with pytest to test logic of each pipeline node in isolation
+9. **User Interface**: Build web dashboard for interactive fund exploration
+10. ...
 
 
