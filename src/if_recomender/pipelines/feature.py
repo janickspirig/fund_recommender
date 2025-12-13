@@ -1,5 +1,3 @@
-# src/your_project_name/pipelines/data_processing/pipeline.py
-
 from kedro.pipeline import pipeline, node
 from ..nodes.feat.volatility import feat_calculate_volatility
 from ..nodes.feat.sharpe_ratio import feat_calculate_sharpe_ratio
@@ -16,16 +14,26 @@ def feature_pipeline(**kwargs):
         [
             node(
                 func=feat_calculate_volatility,
-                inputs=["pri_returns_per_fund"],
+                inputs=[
+                    "pri_daily_returns",
+                    "params:max_period",
+                    "params:trading_days_12m",
+                    "params:trading_days_3m",
+                ],
                 outputs="fea_volatility_per_fund",
                 name="calculate_volatility",
             ),
             node(
                 func=feat_calculate_sharpe_ratio,
                 inputs=[
-                    "pri_returns_per_fund",
+                    "pri_daily_returns",
+                    "fea_volatility_per_fund",
                     "params:risk_free_rate_annual",
                     "params:max_period",
+                    "params:trading_days_12m",
+                    "params:trading_days_3m",
+                    "params:epsilon_volatility",
+                    "params:sharpe_cap",
                 ],
                 outputs="fea_sharpe_ratio_per_fund",
                 name="calculate_sharpe_ratio",

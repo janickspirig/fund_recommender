@@ -40,7 +40,7 @@ raw_anbima_fund_characteristics:
 
 raw_cvm_monthly_fund_data:
   <<: *_raw_cvm_partitioned
-  path: data/01_raw/cvm/data/pl
+  path: data/01_raw/cvm/data/monthly/pl
   dataset:
     type: polars.CSVDataset
     load_args:
@@ -57,7 +57,7 @@ raw_cvm_monthly_fund_data:
 
 raw_cvm_blc_1_data:
   <<: *_raw_cvm_partitioned
-  path: data/01_raw/cvm/data/blc_1
+  path: data/01_raw/cvm/data/monthly/blc_1
   dataset:
     type: polars.CSVDataset
     load_args:
@@ -75,7 +75,7 @@ raw_cvm_blc_1_data:
 
 raw_cvm_blc_2_data:
   <<: *_raw_cvm_partitioned
-  path: data/01_raw/cvm/data/blc_2
+  path: data/01_raw/cvm/data/monthly/blc_2
   dataset:
     type: polars.CSVDataset
     load_args:
@@ -90,7 +90,7 @@ raw_cvm_blc_2_data:
 
 raw_cvm_blc_3_data:
   <<: *_raw_cvm_partitioned
-  path: data/01_raw/cvm/data/blc_3
+  path: data/01_raw/cvm/data/monthly/blc_3
   dataset:
     type: polars.CSVDataset
     load_args:
@@ -105,7 +105,7 @@ raw_cvm_blc_3_data:
 
 raw_cvm_blc_4_data:
   <<: *_raw_cvm_partitioned
-  path: data/01_raw/cvm/data/blc_4
+  path: data/01_raw/cvm/data/monthly/blc_4
   dataset:
     type: polars.CSVDataset
     load_args:
@@ -123,7 +123,7 @@ raw_cvm_blc_4_data:
 
 raw_cvm_blc_5_data:
   <<: *_raw_cvm_partitioned
-  path: data/01_raw/cvm/data/blc_5
+  path: data/01_raw/cvm/data/monthly/blc_5
   dataset:
     type: polars.CSVDataset
     load_args:
@@ -149,7 +149,7 @@ raw_cvm_blc_5_data:
 
 raw_cvm_blc_6_data:
   <<: *_raw_cvm_partitioned
-  path: data/01_raw/cvm/data/blc_6
+  path: data/01_raw/cvm/data/monthly/blc_6
   dataset:
     type: polars.CSVDataset
     load_args:
@@ -175,7 +175,7 @@ raw_cvm_blc_6_data:
 
 raw_cvm_blc_7_data:
   <<: *_raw_cvm_partitioned
-  path: data/01_raw/cvm/data/blc_7
+  path: data/01_raw/cvm/data/monthly/blc_7
   dataset:
     type: polars.CSVDataset
     load_args:
@@ -204,7 +204,7 @@ raw_cvm_blc_7_data:
 
 raw_cvm_blc_8_data:
   <<: *_raw_cvm_partitioned
-  path: data/01_raw/cvm/data/blc_8
+  path: data/01_raw/cvm/data/monthly/blc_8
   dataset:
     type: polars.CSVDataset
     load_args:
@@ -218,18 +218,33 @@ raw_cvm_blc_8_data:
         PF_PJ_EMISSOR: "${polars:Utf8}"
         CPF_CNPJ_EMISSOR: "${polars:Utf8}"
         EMISSOR: "${polars:Utf8}"
-
-int_period_fund_data:
-  <<: *_polars_csvdataset_defaults
-  filepath: data/02_intermediate/int_period_fund_data.csv
+  
+raw_cvm_daily_quotas:
+  <<: *_raw_cvm_partitioned
+  path: data/01_raw/cvm/data/daily/quotas
+  dataset:
+    type: polars.CSVDataset
+    load_args:
+      separator: ";"
+      encoding: "latin1"
+      ignore_errors: false
+      truncate_ragged_lines: false
 
 int_funds_in_scope:
   <<: *_polars_csvdataset_defaults
   filepath: data/02_intermediate/int_funds_in_scope.csv
 
-int_fund_characteristics:
+int_monthly_pl:
   <<: *_polars_csvdataset_defaults
-  filepath: data/02_intermediate/int_fund_characteristics.csv
+  filepath: data/02_intermediate/int_monthly_pl.csv
+
+int_daily_quotas:
+  <<: *_polars_csvdataset_defaults
+  filepath: data/02_intermediate/int_daily_quotas.csv
+
+int_blc:
+  <<: *_polars_csvdataset_defaults
+  filepath: data/02_intermediate/int_blc.csv
 
 pri_nav_per_period:
   <<: *_polars_csvdataset_defaults
@@ -238,6 +253,14 @@ pri_nav_per_period:
 pri_returns_per_fund:
   <<: *_polars_csvdataset_defaults
   filepath: data/03_primary/pri_returns_per_period.csv
+
+pri_daily_quota_nav:
+  <<: *_polars_csvdataset_defaults
+  filepath: data/03_primary/pri_daily_quota_nav.csv
+
+pri_daily_returns:
+  <<: *_polars_csvdataset_defaults
+  filepath: data/03_primary/pri_daily_returns.csv
 
 pri_characteristics:
   <<: *_polars_csvdataset_defaults

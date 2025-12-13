@@ -2,6 +2,9 @@
 # GLOBAL COMPUTED VALUES
 # ====================================
 max_period: ${globals:max_period}
+max_ref_date: ${globals:max_ref_date}
+trading_days_12m: ${globals:trading_days_12m}
+trading_days_3m: ${globals:trading_days_3m}
 
 # ====================================
 # OUTPUT CONFIGURATION
@@ -13,9 +16,9 @@ n_top_funds_output: 5
 # ====================================
 investor_profiles:
   conservative:
-    liquidity: 0.05       
+    liquidity: 0.10       
     risk_reward: 0.10         
-    volatility: 0.30         
+    volatility: 0.25         
     concentration: 0.10       
     asset_diversification: 0.10  
     fund_age: 0.20       
@@ -36,12 +39,12 @@ investor_profiles:
   
   aggressive:
     liquidity: 0.08           
-    risk_reward: 0.50         
+    risk_reward: 0.45         
     volatility: 0.15          
     concentration: 0.05       
-    asset_diversification: 0.08  
+    asset_diversification: 0.13  
     fund_age: 0.07            
-    credit_quality: 0.07     
+    credit_quality: 0.07   
 
   speculator:
     liquidity: 0.03           
@@ -100,7 +103,7 @@ guardrails:
       min_offer_count: 5
   
   min_threshold_sharpe_12m: 
-    active: true
+    active: false
     params: 
       min_sharpe_12m: 0.0
 
@@ -118,12 +121,22 @@ guardrails:
   no_extreme_returns:
     active: true
     params:
-      max_abs_monthly_return: 1.0
+      max_abs_daily_return: 0.10 
+
+  min_threshold_cov_sharpe_12m:
+    active: true
+    params:
+      min_coverage_12m: 0.80
+
+  min_threshold_cov_sharpe_3m:
+    active: true
+    params:
+      min_coverage_3m: 0.80
 
 # ====================================
 # DATA SCOPE
 # ====================================
-num_period_months: null # all available months
+num_period_months: null # all available months that we have data for
 min_data_period_per_fund: 3
 remove_funds_w_negative_cvm_pl_values: true # 24 funds with negative NAV value in latest period (202509)
 
@@ -144,17 +157,26 @@ anbima_accessability:
 risk_free_rate_annual: 0.1371  # CDI on 23/11
 
 fund_age_cap_years: 30.0
+gamma_coverage_penalty: 0.7 # high -> strong penalization for missing features
 
 normalization_lower_percentile: 0.05
 normalization_upper_percentile: 0.95
 use_log_volatility: true
+# minimum volatility threshold for Sharpe ratio calculation
+# funds with volatility below this are set to null (filters money market-like funds)
+epsilon_volatility: 1e-6
+# caps extreme values from ultra-low volatility
+sharpe_cap: 20.0
 
 # ====================================
 # RAW DATA VALIDATION
 # ====================================
 # Pre-parsing validations run before pipeline execution via Kedro hook
 # Runs BEFORE catalog.load() to fix known issues:
-# << list here the known issues that are checked in the files >>
+# - malformed quotes, e.g., "..."  
+# - redundant quotes, e.g., "...
+#
+# Validations are implemented through separate class thus can be used outside this pipeline as well
 #
 # Strategies per validation: fix | ignore
 #   - fix: Repair data in-place (only where a fix method exists)
@@ -214,7 +236,8 @@ data_validation:
 # DATAFRAME VALIDATIONS
 # ====================================
 # Validations run after datasets are loaded (input of nodes) or saved (output of nodes)
-# These validate DataFrame content and report issues (no fixes, just logging).
+# These validate DataFrame content and report issues (no fixes, just logging)
+# Each validation is a separate function and can be reused for different DataFrames
 dataframe_validation:
   report_include_passed: false
 
@@ -237,16 +260,58 @@ input_validations:
       validate_allowed_values:
         value_column: GRAU_RISCO
         allowed_values: *credit_rating_order
+
 output_validations:
-  pri_returns_per_fund:
+  int_funds_in_scope:
     validations:
-      validate_time_completeness:
-        time_column: period
-        group_column: cnpj
       validate_uniqueness:
         group_columns:
         - cnpj
-        - period
+
+  int_daily_quotas:
+    validations:
+      validate_uniqueness:
+        group_columns:
+        - cnpj
+        - DT_COMPTC
+      validate_bounds:
+        value_column: VL_QUOTA
+        identifier_column: cnpj
+        lower_bound: 0
+        upper_bound: null
+
+  int_monthly_pl:
+    validations:
+      validate_uniqueness:
+        group_columns:
+        - cnpj
+        - DT_COMPTC
+      validate_bounds:
+        value_column: VL_PATRIM_LIQ
+        identifier_column: cnpj
+        lower_bound: 0
+        upper_bound: null
+
+  pri_daily_quota_nav:
+    validations:
+      validate_time_completeness:
+        time_column: date
+        group_column: cnpj
+        date_format: "%Y-%m-%d"
+      validate_uniqueness:
+        group_columns:
+        - cnpj
+        - date
+  pri_daily_returns:
+    validations:
+      validate_time_completeness:
+        time_column: date
+        group_column: cnpj
+        date_format: "%Y-%m-%d"
+      validate_uniqueness:
+        group_columns:
+        - cnpj
+        - date
   pri_nav_per_period:
     validations:
       validate_time_completeness:

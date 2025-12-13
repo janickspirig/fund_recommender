@@ -1,8 +1,3 @@
-"""Guardrail nodes for filtering funds before final recommendations.
-
-Each guardrail runs in parallel and returns cnpj + failed flag.
-"""
-
 import polars as pl
 from typing import Any, Dict
 
@@ -155,16 +150,15 @@ def mo_guardrail_no_funds_wo_manager(
 
 def mo_guardrail_include_only_active_funds(
     scores_per_profile: pl.DataFrame,
-    returns_per_fund: pl.DataFrame,
-    max_period: int,
+    daily_returns: pl.DataFrame,
+    max_ref_date: str,
     config: Dict[str, Any],
 ) -> pl.DataFrame:
-    """Filter funds without data in the most recent period.
-
+    """Filter funds without data on the most recent reference date.
     Args:
         scores_per_profile: Scored funds with cnpj.
-        returns_per_fund: Returns data with cnpj, period.
-        max_period: Most recent period in YYYYMM format.
+        daily_returns: Daily returns data with cnpj, date.
+        max_ref_date: Most recent date in YYYY-MM-DD format.
         config: Config with active (bool).
 
     Returns:
@@ -176,7 +170,7 @@ def mo_guardrail_include_only_active_funds(
         return cnpjs.with_columns(pl.lit(False).alias("failed"))
 
     active_funds = (
-        returns_per_fund.filter(pl.col("period") == max_period)
+        daily_returns.filter(pl.col("date") == max_ref_date)
         .select("cnpj")
         .unique()
         .with_columns(pl.lit(True).alias("has_latest_data"))
@@ -196,19 +190,19 @@ def mo_guardrail_include_only_active_funds(
 
 def mo_guardrail_no_extreme_returns(
     scores_per_profile: pl.DataFrame,
-    returns_per_fund: pl.DataFrame,
+    daily_returns: pl.DataFrame,
     config: Dict[str, Any],
 ) -> pl.DataFrame:
-    """Filter funds with extreme monthly returns (likely capital flow issues).
+    """Filter funds with extreme daily returns.
 
-    Funds with any monthly return exceeding the threshold are flagged.
-    This catches cases where NAV changes due to subscriptions/redemptions
-    are incorrectly interpreted as investment returns.
+    Funds with any daily return exceeding the threshold are flagged.
+    Since we now use quota-based returns, extreme values indicate
+    data quality issues rather than capital flow distortions.
 
     Args:
         scores_per_profile: Scored funds with cnpj.
-        returns_per_fund: Returns data with cnpj, period, monthly_return.
-        config: Config with active (bool) and params.max_abs_monthly_return (float).
+        daily_returns: Daily returns data with cnpj, daily_return.
+        config: Config with active (bool) and params.max_abs_daily_return (float).
 
     Returns:
         DataFrame with cnpj, failed (bool).
@@ -218,12 +212,13 @@ def mo_guardrail_no_extreme_returns(
     if not config.get("active", False):
         return cnpjs.with_columns(pl.lit(False).alias("failed"))
 
-    max_return = config.get("params", {}).get("max_abs_monthly_return", 1.0)
+    # Default to 0.10 (10% daily return as extreme)
+    max_return = config.get("params", {}).get("max_abs_daily_return", 0.10)
 
     extreme_funds = (
-        returns_per_fund.filter(
-            (pl.col("monthly_return") > max_return)
-            | (pl.col("monthly_return") < -max_return)
+        daily_returns.filter(
+            (pl.col("daily_return") > max_return)
+            | (pl.col("daily_return") < -max_return)
         )
         .select("cnpj")
         .unique()
@@ -240,6 +235,78 @@ def mo_guardrail_no_extreme_returns(
     )
 
 
+def mo_guardrail_min_cov_sharpe_12m(
+    scores_per_profile: pl.DataFrame,
+    sharpe_ratio: pl.DataFrame,
+    config: Dict[str, Any],
+) -> pl.DataFrame:
+    """Filter funds with insufficient 12-month data coverage.
+
+    Args:
+        scores_per_profile: Scored funds with cnpj.
+        sharpe_ratio: Sharpe data with cnpj, pct_cov_12m.
+        config: Config with active (bool) and params.min_coverage_12m (float).
+
+    Returns:
+        DataFrame with cnpj, failed (bool).
+    """
+    cnpjs = scores_per_profile.select("cnpj").unique()
+
+    if not config.get("active", False):
+        return cnpjs.with_columns(pl.lit(False).alias("failed"))
+
+    min_coverage = config.get("params", {}).get("min_coverage_12m", 0.80)
+
+    enriched = cnpjs.join(
+        sharpe_ratio.select(["cnpj", "pct_cov_12m"]), on="cnpj", how="left"
+    )
+
+    return enriched.select(
+        [
+            "cnpj",
+            (
+                pl.col("pct_cov_12m").is_null() | (pl.col("pct_cov_12m") < min_coverage)
+            ).alias("failed"),
+        ]
+    )
+
+
+def mo_guardrail_min_cov_sharpe_3m(
+    scores_per_profile: pl.DataFrame,
+    sharpe_ratio: pl.DataFrame,
+    config: Dict[str, Any],
+) -> pl.DataFrame:
+    """Filter funds with insufficient 3-month data coverage.
+
+    Args:
+        scores_per_profile: Scored funds with cnpj.
+        sharpe_ratio: Sharpe data with cnpj, pct_cov_3m.
+        config: Config with active (bool) and params.min_coverage_3m (float).
+
+    Returns:
+        DataFrame with cnpj, failed (bool).
+    """
+    cnpjs = scores_per_profile.select("cnpj").unique()
+
+    if not config.get("active", False):
+        return cnpjs.with_columns(pl.lit(False).alias("failed"))
+
+    min_coverage = config.get("params", {}).get("min_coverage_3m", 0.80)
+
+    enriched = cnpjs.join(
+        sharpe_ratio.select(["cnpj", "pct_cov_3m"]), on="cnpj", how="left"
+    )
+
+    return enriched.select(
+        [
+            "cnpj",
+            (
+                pl.col("pct_cov_3m").is_null() | (pl.col("pct_cov_3m") < min_coverage)
+            ).alias("failed"),
+        ]
+    )
+
+
 def mo_guardrail_merge(
     gr_min_offer: pl.DataFrame,
     gr_sharpe_12m: pl.DataFrame,
@@ -247,6 +314,8 @@ def mo_guardrail_merge(
     gr_no_manager: pl.DataFrame,
     gr_active_funds: pl.DataFrame,
     gr_extreme_returns: pl.DataFrame,
+    gr_cov_sharpe_12m: pl.DataFrame,
+    gr_cov_sharpe_3m: pl.DataFrame,
 ) -> pl.DataFrame:
     """Merge all guardrail results into pass/fail with failed_guardrails list.
 
@@ -257,6 +326,8 @@ def mo_guardrail_merge(
         gr_no_manager: Result from no_funds_wo_manager guardrail.
         gr_active_funds: Result from include_only_active_funds guardrail.
         gr_extreme_returns: Result from no_extreme_returns guardrail.
+        gr_cov_sharpe_12m: Result from min_cov_sharpe_12m guardrail.
+        gr_cov_sharpe_3m: Result from min_cov_sharpe_3m guardrail.
 
     Returns:
         DataFrame with cnpj, pass_guardrail (bool), failed_guardrails (comma-separated).
@@ -268,6 +339,8 @@ def mo_guardrail_merge(
         ("no_funds_wo_manager", gr_no_manager),
         ("include_only_active_funds", gr_active_funds),
         ("no_extreme_returns", gr_extreme_returns),
+        ("min_cov_sharpe_12m", gr_cov_sharpe_12m),
+        ("min_cov_sharpe_3m", gr_cov_sharpe_3m),
     ]
 
     result = gr_min_offer.select("cnpj")

@@ -7,6 +7,8 @@ from ..nodes.mo.guardrails import (
     mo_guardrail_no_funds_wo_manager,
     mo_guardrail_include_only_active_funds,
     mo_guardrail_no_extreme_returns,
+    mo_guardrail_min_cov_sharpe_12m,
+    mo_guardrail_min_cov_sharpe_3m,
     mo_guardrail_merge,
 )
 
@@ -16,7 +18,11 @@ def model_output_pipeline(**kwargs):
         [
             node(
                 func=mo_scoring_per_profile,
-                inputs=["mi_scoring_input", "params:investor_profiles"],
+                inputs=[
+                    "mi_scoring_input",
+                    "params:investor_profiles",
+                    "params:gamma_coverage_penalty",
+                ],
                 outputs="mo_scores_per_profile",
                 name="score_funds_per_profile",
             ),
@@ -65,8 +71,8 @@ def model_output_pipeline(**kwargs):
                 func=mo_guardrail_include_only_active_funds,
                 inputs=[
                     "mo_scores_per_profile",
-                    "pri_returns_per_fund",
-                    "params:max_period",
+                    "pri_daily_returns",
+                    "params:max_ref_date",
                     "params:guardrails.include_only_active_funds",
                 ],
                 outputs="mo_gr_active_funds",
@@ -76,11 +82,31 @@ def model_output_pipeline(**kwargs):
                 func=mo_guardrail_no_extreme_returns,
                 inputs=[
                     "mo_scores_per_profile",
-                    "pri_returns_per_fund",
+                    "pri_daily_returns",
                     "params:guardrails.no_extreme_returns",
                 ],
                 outputs="mo_gr_extreme_returns",
                 name="guardrail_no_extreme_returns",
+            ),
+            node(
+                func=mo_guardrail_min_cov_sharpe_12m,
+                inputs=[
+                    "mo_scores_per_profile",
+                    "fea_sharpe_ratio_per_fund",
+                    "params:guardrails.min_threshold_cov_sharpe_12m",
+                ],
+                outputs="mo_gr_cov_sharpe_12m",
+                name="guardrail_min_cov_sharpe_12m",
+            ),
+            node(
+                func=mo_guardrail_min_cov_sharpe_3m,
+                inputs=[
+                    "mo_scores_per_profile",
+                    "fea_sharpe_ratio_per_fund",
+                    "params:guardrails.min_threshold_cov_sharpe_3m",
+                ],
+                outputs="mo_gr_cov_sharpe_3m",
+                name="guardrail_min_cov_sharpe_3m",
             ),
             node(
                 func=mo_guardrail_merge,
@@ -91,6 +117,8 @@ def model_output_pipeline(**kwargs):
                     "mo_gr_no_manager",
                     "mo_gr_active_funds",
                     "mo_gr_extreme_returns",
+                    "mo_gr_cov_sharpe_12m",
+                    "mo_gr_cov_sharpe_3m",
                 ],
                 outputs="mo_guardrail_mark",
                 name="guardrail_merge",

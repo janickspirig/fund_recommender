@@ -1,3 +1,4 @@
+import pandas as pd
 import polars as pl
 import unicodedata
 
@@ -15,24 +16,31 @@ def make_safe_column_name(value: str) -> str:
 
 
 def pri_create_fund_characteristics(
-    period_fi_fund_data: pl.DataFrame,
-    spine_funds: pl.DataFrame,
-    fund_characteristics: pl.DataFrame,
+    anbima_fund_characteristics: pd.DataFrame,
+    funds_in_scope: pl.DataFrame,
 ) -> pl.DataFrame:
     """Build fund characteristics with one-hot encoded ANBIMA category flags.
 
-    Deduplicates share classes by keeping earliest inception date per CNPJ.
+    Filters raw ANBIMA data for funds in scope, deduplicates share classes
+    by keeping earliest inception date per CNPJ.
     Creates is_* columns for each unique category value across all levels.
 
     Args:
-        period_fi_fund_data: CVM period data (unused, for pipeline compatibility).
-        spine_funds: Funds in scope with cnpj column.
-        fund_characteristics: ANBIMA fund metadata with categories and attributes.
+        anbima_fund_characteristics: Raw ANBIMA fund metadata (pandas DataFrame).
+        funds_in_scope: Funds in scope with cnpj column.
 
     Returns:
         DataFrame with cnpj, category columns, fund_manager, redemption_days,
         inception_date, is_active, and ~30-40 is_* one-hot columns.
     """
+    fund_characteristics = pl.from_pandas(anbima_fund_characteristics)
+    fund_characteristics = fund_characteristics.with_columns(
+        pl.col("CNPJ do Fundo").cast(pl.UInt64).alias("cnpj")
+    )
+
+    fund_characteristics = fund_characteristics.filter(
+        pl.col("cnpj").is_in(funds_in_scope["cnpj"])
+    )
 
     fund_characteristics_dedup = (
         fund_characteristics.select(
@@ -57,7 +65,7 @@ def pri_create_fund_characteristics(
         .first()
     )
 
-    master_df = spine_funds.join(
+    master_df = funds_in_scope.join(
         fund_characteristics_dedup,
         on="cnpj",
         how="left",

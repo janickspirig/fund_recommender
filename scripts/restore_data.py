@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """Restore raw CVM data from the latest backup folder.
 
+Restores only files that were backed up (i.e., files that had quote issues
+and were fixed by the validation hooks). The backup contains the original
+files before fixes were applied.
+
 Usage:
     python scripts/restore_data.py
 
@@ -25,7 +29,7 @@ def find_latest_backup(backup_base: Path) -> Path | None:
 
 def main():
     backup_base = Path("data/01_raw_backup")
-    dst_base = Path("data/01_raw/cvm/data")
+    dst_base = Path("data/01_raw/cvm/data/monthly")
     blc_dirs = [
         "blc_1",
         "blc_2",
@@ -54,26 +58,15 @@ def main():
         return
 
     print(f"Restoring from backup: {latest_backup.name}")
+    print(f"Destination: {dst_base}")
 
-    print("\nClearing existing data...")
-    for blc_dir in blc_dirs:
-        target_dir = dst_base / blc_dir
-        count = 0
-        if target_dir.exists():
-            for f in target_dir.glob("*.csv"):
-                f.unlink()
-                count += 1
-        if count > 0:
-            print(f"  Deleted {count} files from {blc_dir}/")
-
-    print("\nRestoring files...")
+    print("\nRestoring files (overwriting fixed versions with originals)...")
     copied = 0
     for blc_dir in blc_dirs:
         src_dir = src_base / blc_dir
         dst_dir = dst_base / blc_dir
 
         if not src_dir.exists():
-            print(f"  WARNING: {blc_dir}/ not found in backup, skipping")
             continue
 
         dst_dir.mkdir(parents=True, exist_ok=True)
@@ -82,13 +75,15 @@ def main():
             shutil.copy2(csv_file, dst_dir / csv_file.name)
             copied += 1
             dir_count += 1
-        print(f"  Restored {dir_count} files to {blc_dir}/")
+        if dir_count > 0:
+            print(f"  Restored {dir_count} files to {blc_dir}/")
 
     if copied > 0:
         print(f"\nDone! Restored {copied} files from {latest_backup.name}")
         print("\nNow run: kedro run")
+        print("(The validation hooks will re-apply fixes to these files)")
     else:
-        print("\nERROR: No files were restored!")
+        print("\nNo files to restore (backup may be empty or already restored)")
 
 
 if __name__ == "__main__":

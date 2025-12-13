@@ -34,7 +34,9 @@ def feat_merge_all_features(
     )
 
     all_features = all_features.join(
-        volatility_per_fund.select(["cnpj", "volatility"]),
+        volatility_per_fund.select(
+            ["cnpj", "volatility", "volatility_12m", "volatility_3m"]
+        ),
         on="cnpj",
         how="left",
     )
