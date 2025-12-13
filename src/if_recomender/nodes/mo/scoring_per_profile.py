@@ -3,16 +3,20 @@ from typing import Dict
 
 
 def mo_scoring_per_profile(
-    scoring_input: pl.DataFrame, investor_profiles: Dict[str, Dict[str, float]]
+    scoring_input: pl.DataFrame,
+    investor_profiles: Dict[str, Dict[str, float]],
+    gamma: float,
 ) -> pl.DataFrame:
     """Calculate weighted scores and rankings per investor profile.
 
     Weights are re-normalized based on available features per fund.
-    Missing features do not penalize the fund's score.
+    A soft coverage penalty is applied so funds with more features rank higher.
 
     Args:
         scoring_input: Normalized feature scores (0-1) with cnpj.
         investor_profiles: Profile configs with feature weights.
+        gamma: Coverage penalty factor (0 < gamma <= 1). At coverage=0, score
+            is multiplied by gamma; at coverage=1, no penalty is applied.
 
     Returns:
         DataFrame with cnpj, investor_profile, score, rank, pct_features_considered.
@@ -51,16 +55,11 @@ def mo_scoring_per_profile(
 
     cross_joined = scoring_input.join(profiles_df, how="cross")
 
-    for feat_col in feature_columns.keys():
-        cross_joined = cross_joined.with_columns(
-            [
-                pl.col(feat_col)
-                .is_finite()
-                .fill_null(False)
-                .cast(pl.Int8)
-                .alias(f"{feat_col}_available")
-            ]
-        )
+    availability_exprs = [
+        pl.col(feat_col).is_finite().fill_null(False).cast(pl.Int8).alias(f"{feat_col}_available")
+        for feat_col in feature_columns.keys()
+    ]
+    cross_joined = cross_joined.with_columns(availability_exprs)
 
     weight_sum_expr = sum(
         pl.col(weight_col) * pl.col(f"{feat_col}_available")
@@ -74,7 +73,6 @@ def mo_scoring_per_profile(
     pct_features_expr = sum(
         pl.col(f"{feat_col}_available") for feat_col in feature_columns.keys()
     )
-    pct_features_expr = pct_features_expr + pl.col(f"{feat_col}_available")
 
     cross_joined = cross_joined.with_columns(
         [
@@ -100,7 +98,10 @@ def mo_scoring_per_profile(
         for feat_col, weight_col in feature_columns.items()
     )
 
-    scored = cross_joined.with_columns([score_expr.alias("score")])
+    scored = cross_joined.with_columns([
+        score_expr.alias("score_raw"),
+        (score_expr * (gamma + (1 - gamma) * (pl.col("pct_features_considered") / 100))).alias("score")
+    ])
 
     scored_w_rank = (
         scored.with_columns(

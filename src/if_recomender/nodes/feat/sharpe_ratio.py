@@ -1,127 +1,160 @@
+from datetime import date, timedelta
+
 import polars as pl
-import math
 
 
-def _subtract_months(period: int, months: int) -> int:
-    """Subtract N months from a YYYYMM period."""
+def _period_to_last_date(period: int) -> date:
+    """Convert YYYYMM period to last day of that month."""
     year = period // 100
     month = period % 100
 
-    total_months = year * 12 + month - 1
+    if month == 12:
+        next_year = year + 1
+        next_month = 1
+    else:
+        next_year = year
+        next_month = month + 1
 
-    total_months -= months
-
-    new_year = total_months // 12
-    new_month = (total_months % 12) + 1
-
-    return new_year * 100 + new_month
-
-
-def _get_n_month_window_periods(max_period: int, n_months: int) -> list[int]:
-    """Get the last N periods ending at max_period in chronological order."""
-    periods = []
-    for i in range(n_months - 1, -1, -1):  # From (n-1) down to 0
-        periods.append(_subtract_months(max_period, i))
-    return periods
+    first_of_next = date(next_year, next_month, 1)
+    return first_of_next - timedelta(days=1)
 
 
-def _calculate_sharpe_for_window(
-    returns_sorted: pl.DataFrame,
-    max_period: int,
-    n_months: int,
-    rf_monthly: float,
-    epsilon_volatility: float = 1e-8,
+def _get_last_n_trading_days(
+    sorted_returns: pl.DataFrame,
+    n_days: int,
 ) -> pl.DataFrame:
-    """Calculate annualized Sharpe ratio for N-month window."""
-    window_periods = _get_n_month_window_periods(max_period, n_months)
+    """Select the last N trading days for each fund.
 
-    window_returns = returns_sorted.filter(pl.col("period").is_in(window_periods))
+    For each fund, takes the last N rows after sorting by date ascending.
+    If fewer than N rows are available, uses all available rows.
+    """
+    return (
+        sorted_returns.group_by("cnpj")
+        .agg(pl.all().tail(n_days))
+        .explode(pl.all().exclude("cnpj"))
+    )
 
-    sharpe_col = f"sharpe_{n_months}m"
 
-    sharpe_per_fund = window_returns.group_by("cnpj").agg(
+def _calculate_annualized_excess_return_with_count(
+    returns: pl.DataFrame,
+    rf_daily: float,
+    trading_days_12m: int,
+    output_col: str,
+    count_col: str,
+) -> pl.DataFrame:
+    """Calculate annualized mean excess return and observation count for each fund.
+
+    Formula: μ_annual = mean(daily_return - rf_daily) * trading_days_12m
+
+    Returns DataFrame with cnpj, output_col (excess return), and count_col (n observations).
+    """
+    return returns.group_by("cnpj").agg(
         [
-            pl.col("monthly_return")
-            .filter(
-                pl.col("monthly_return").is_not_null()
-                & pl.col("monthly_return").is_finite()
-            )
-            .count()
-            .alias("n_valid_returns"),
-            pl.col("monthly_return").mean().alias("mean_return"),
-            pl.col("monthly_return").std().alias("std_return"),
-            pl.col("period").n_unique().alias("n_periods"),
+            ((pl.col("daily_return") - rf_daily).mean() * trading_days_12m).alias(
+                output_col
+            ),
+            pl.len().alias(count_col),
         ]
     )
-
-    sharpe_per_fund = sharpe_per_fund.with_columns(
-        [(pl.col("mean_return") - rf_monthly).alias("average_monthly_excess_return")]
-    )
-
-    sharpe_per_fund = sharpe_per_fund.with_columns(
-        (pl.col("average_monthly_excess_return") / pl.col("std_return")).alias(
-            "monthly_sharpe"
-        )
-    )
-
-    sharpe_per_fund = sharpe_per_fund.with_columns(
-        [(pl.col("monthly_sharpe") * math.sqrt(12)).alias(sharpe_col)]
-    )
-
-    sharpe_per_fund = sharpe_per_fund.with_columns(
-        [
-            pl.when(
-                (pl.col("n_valid_returns") >= n_months)
-                & (pl.col("n_periods") == n_months)
-                & (pl.col("std_return") > epsilon_volatility)
-                & (pl.col("mean_return").is_not_null())
-                & (pl.col("std_return").is_not_null())
-                & (pl.col("mean_return").is_finite())
-                & (pl.col("std_return").is_finite())
-            )
-            .then(pl.col(sharpe_col))
-            .otherwise(None)
-            .alias(sharpe_col)
-        ]
-    )
-
-    return sharpe_per_fund.select(["cnpj", sharpe_col])
 
 
 def feat_calculate_sharpe_ratio(
-    returns_per_fund: pl.DataFrame, risk_free_rate_annual: float, max_period: int
+    daily_returns: pl.DataFrame,
+    volatility_per_fund: pl.DataFrame,
+    risk_free_rate_annual: float,
+    max_period: int,
+    trading_days_12m: int,
+    trading_days_3m: int,
+    epsilon_volatility: float,
+    sharpe_cap: float,
 ) -> pl.DataFrame:
-    """Calculate annualized Sharpe ratios for 12-month and 3-month windows.
+    """Calculate annualized Sharpe ratios using daily returns and pre-calculated volatility.
 
-    Funds with incomplete data or near-zero volatility get null Sharpe values.
+    Formula:
+        rf_daily = (1 + rf_annual)^(1/trading_days_12m) - 1
+        μ_annual = mean(daily_return - rf_daily) * trading_days_12m
+        sharpe = μ_annual / volatility_Nm
 
     Args:
-        returns_per_fund: Monthly returns with cnpj, period, monthly_return.
+        daily_returns: Daily returns with cnpj, date, daily_return.
+        volatility_per_fund: Pre-calculated volatilities with cnpj, volatility_12m, volatility_3m.
         risk_free_rate_annual: Annual risk-free rate (e.g., 0.1371 for CDI).
-        max_period: Most recent period in YYYYMM format.
+        max_period: Reference period in YYYYMM format.
+        trading_days_12m: Number of trading days for 12-month window (also used for annualization).
+        trading_days_3m: Number of trading days for 3-month window.
+        epsilon_volatility: Minimum volatility threshold; funds below this get null Sharpe.
+        sharpe_cap: Maximum absolute Sharpe value; values are clipped to [-cap, +cap].
 
     Returns:
-        DataFrame with cnpj, sharpe_12m, sharpe_3m (annualized).
+        DataFrame with cnpj, sharpe_12m, sharpe_3m, pct_cov_12m, pct_cov_3m.
     """
-    returns_sorted = returns_per_fund.sort(["cnpj", "period"])
+    ref_date = _period_to_last_date(max_period)
+    rf_daily = (1 + risk_free_rate_annual) ** (1 / trading_days_12m) - 1
 
-    rf_monthly = (1 + risk_free_rate_annual) ** (1 / 12) - 1
-
-    epsilon_volatility = 1e-8
-
-    sharpe_12m = _calculate_sharpe_for_window(
-        returns_sorted, max_period, 12, rf_monthly, epsilon_volatility
+    daily_returns = daily_returns.with_columns(
+        pl.col("date").str.to_date().alias("date")
     )
 
-    sharpe_3m = _calculate_sharpe_for_window(
-        returns_sorted, max_period, 3, rf_monthly, epsilon_volatility
+    filtered_returns = daily_returns.filter(pl.col("date") <= ref_date)
+    sorted_returns = filtered_returns.sort(["cnpj", "date"])
+
+    returns_12m = _get_last_n_trading_days(sorted_returns, trading_days_12m)
+    excess_12m = _calculate_annualized_excess_return_with_count(
+        returns_12m, rf_daily, trading_days_12m, "excess_return_12m", "n_obs_12m"
     )
 
-    all_cnpjs = pl.concat(
-        [sharpe_12m.select("cnpj"), sharpe_3m.select("cnpj")]
-    ).unique()
+    returns_3m = _get_last_n_trading_days(sorted_returns, trading_days_3m)
+    excess_3m = _calculate_annualized_excess_return_with_count(
+        returns_3m, rf_daily, trading_days_12m, "excess_return_3m", "n_obs_3m"
+    )
 
-    sharpe_all = all_cnpjs.join(sharpe_12m, on="cnpj", how="left")
-    sharpe_all = sharpe_all.join(sharpe_3m, on="cnpj", how="left")
+    result = excess_12m.join(excess_3m, on="cnpj", how="outer")
 
-    return sharpe_all
+    result = result.join(
+        volatility_per_fund.select(["cnpj", "volatility_12m", "volatility_3m"]),
+        on="cnpj",
+        how="left",
+    )
+
+    result = result.with_columns(
+        [
+            (pl.col("n_obs_12m") / trading_days_12m).alias("pct_cov_12m"),
+            (pl.col("n_obs_3m") / trading_days_3m).alias("pct_cov_3m"),
+        ]
+    )
+
+    result = result.with_columns(
+        [
+            pl.when(
+                pl.col("volatility_12m").is_not_null()
+                & pl.col("volatility_12m").is_finite()
+                & (pl.col("volatility_12m") > epsilon_volatility)
+                & pl.col("excess_return_12m").is_not_null()
+                & pl.col("excess_return_12m").is_finite()
+            )
+            .then(pl.col("excess_return_12m") / pl.col("volatility_12m"))
+            .otherwise(None)
+            .alias("sharpe_12m_raw"),
+            pl.when(
+                pl.col("volatility_3m").is_not_null()
+                & pl.col("volatility_3m").is_finite()
+                & (pl.col("volatility_3m") > epsilon_volatility)
+                & pl.col("excess_return_3m").is_not_null()
+                & pl.col("excess_return_3m").is_finite()
+            )
+            .then(pl.col("excess_return_3m") / pl.col("volatility_3m"))
+            .otherwise(None)
+            .alias("sharpe_3m_raw"),
+        ]
+    )
+
+    result = result.with_columns(
+        [
+            pl.col("sharpe_12m_raw").clip(-sharpe_cap, sharpe_cap).alias("sharpe_12m"),
+            pl.col("sharpe_3m_raw").clip(-sharpe_cap, sharpe_cap).alias("sharpe_3m"),
+        ]
+    )
+
+    return result.select(
+        ["cnpj", "sharpe_12m", "sharpe_3m", "pct_cov_12m", "pct_cov_3m"]
+    )

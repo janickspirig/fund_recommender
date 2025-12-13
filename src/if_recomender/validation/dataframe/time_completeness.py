@@ -1,59 +1,84 @@
 """Check for gaps in time periods within groups."""
 
+from typing import Optional
+
 import polars as pl
 
 from if_recomender.validation.models import OutputValidationResult
 
 
-def _add_year_month_columns(df: pl.DataFrame, time_column: str) -> pl.DataFrame:
-    """Add _year and _month from time column, handling int/date/string formats."""
-    col = pl.col(time_column)
-    dtype = df[time_column].dtype
+def _result(
+    dataset_name: str, passed: bool, error_count: int = 0, details: str = ""
+) -> OutputValidationResult:
+    """Build OutputValidationResult with fixed validation_name."""
+    return OutputValidationResult(
+        dataset_name=dataset_name,
+        validation_name="validate_time_completeness",
+        passed=passed,
+        error_count=error_count,
+        details=details,
+    )
 
-    if dtype == pl.Date:
-        return df.with_columns(
-            [
-                col.dt.year().alias("_year"),
-                col.dt.month().alias("_month"),
-            ]
-        )
-    elif dtype == pl.Datetime:
-        return df.with_columns(
-            [
-                col.dt.year().alias("_year"),
-                col.dt.month().alias("_month"),
-            ]
-        )
-    elif dtype in (
-        pl.Int64,
-        pl.Int32,
-        pl.Int16,
-        pl.Int8,
-        pl.UInt64,
-        pl.UInt32,
-        pl.UInt16,
-        pl.UInt8,
-    ):
-        return df.with_columns(
-            [
-                (col // 100).alias("_year"),
-                (col % 100).alias("_month"),
-            ]
-        )
-    elif dtype == pl.Utf8:
-        return df.with_columns(
-            [
-                (col + "01").str.to_date("%Y%m%d").dt.year().alias("_year"),
-                (col + "01").str.to_date("%Y%m%d").dt.month().alias("_month"),
-            ]
-        )
+
+def _to_date(
+    df: pl.DataFrame, time_column: str, date_format: Optional[str]
+) -> pl.DataFrame:
+    """Convert time column to Date type, adding '_date' column."""
+    col = df[time_column]
+
+    # Already a date type
+    if col.dtype in (pl.Date, pl.Datetime):
+        return df.with_columns(pl.col(time_column).cast(pl.Date).alias("_date"))
+
+    # Integer or string: convert to string, append "01" if monthly, parse
+    str_col = pl.col(time_column).cast(pl.Utf8)
+    if date_format:
+        date_expr = str_col.str.to_date(date_format)
     else:
-        return df.with_columns(
-            [
-                (col.cast(pl.Int64) // 100).alias("_year"),
-                (col.cast(pl.Int64) % 100).alias("_month"),
-            ]
+        date_expr = (str_col + "01").str.to_date("%Y%m%d")
+
+    return df.with_columns(date_expr.alias("_date"))
+
+
+def _calculate_expected_monthly(group_stats: pl.DataFrame) -> pl.DataFrame:
+    """Calculate expected months: max_ym - min_ym + 1."""
+    return (
+        group_stats.with_columns(
+            (pl.col("_date").dt.year() * 12 + pl.col("_date").dt.month()).alias("_ym")
         )
+        .group_by("_group")
+        .agg(
+            pl.col("_ym").min().alias("min_ym"),
+            pl.col("_ym").max().alias("max_ym"),
+            pl.col("_ym").n_unique().alias("actual"),
+        )
+        .with_columns((pl.col("max_ym") - pl.col("min_ym") + 1).alias("expected"))
+    )
+
+
+def _calculate_expected_daily(
+    df_parsed: pl.DataFrame, group_column: str
+) -> pl.DataFrame:
+    """Calculate expected trading days between first and last date per group."""
+    all_days = df_parsed.select("_date").unique().sort("_date")
+
+    group_stats = df_parsed.group_by(group_column).agg(
+        pl.col("_date").min().alias("first"),
+        pl.col("_date").max().alias("last"),
+        pl.col("_date").n_unique().alias("actual"),
+    )
+
+    # Cross join and filter to days within each group's range
+    cross = group_stats.join(all_days, how="cross")
+    expected_per_group = (
+        cross.filter(
+            (pl.col("_date") >= pl.col("first")) & (pl.col("_date") <= pl.col("last"))
+        )
+        .group_by(group_column)
+        .agg(pl.len().alias("expected"))
+    )
+
+    return group_stats.join(expected_per_group, on=group_column)
 
 
 def validate_time_completeness(
@@ -61,67 +86,52 @@ def validate_time_completeness(
     dataset_name: str,
     time_column: str,
     group_column: str,
+    date_format: Optional[str] = None,
 ) -> OutputValidationResult:
-    """Check for gaps between min and max period per group."""
+    """Check for gaps between min and max time per group.
+
+    Granularity is auto-detected from date_format:
+    - If date_format contains '%d' -> daily completeness check
+    - Otherwise -> monthly completeness check
+    """
+    # Validate columns exist
     if time_column not in df.columns:
-        return OutputValidationResult(
-            dataset_name=dataset_name,
-            validation_name="validate_time_completeness",
-            passed=False,
-            error_count=1,
-            details=f"Column '{time_column}' not found in DataFrame",
-        )
-
+        return _result(dataset_name, False, 1, f"Column '{time_column}' not found")
     if group_column not in df.columns:
-        return OutputValidationResult(
-            dataset_name=dataset_name,
-            validation_name="validate_time_completeness",
-            passed=False,
-            error_count=1,
-            details=f"Column '{group_column}' not found in DataFrame",
+        return _result(dataset_name, False, 1, f"Column '{group_column}' not found")
+
+    # Parse dates
+    df_parsed = _to_date(df, time_column, date_format)
+
+    # Detect granularity and calculate expected counts
+    is_daily = date_format and "%d" in date_format
+
+    if is_daily:
+        result = _calculate_expected_daily(df_parsed, group_column)
+        unit = "trading days"
+    else:
+        # For monthly, rename group column temporarily for shared logic
+        df_with_group = df_parsed.with_columns(pl.col(group_column).alias("_group"))
+        result = _calculate_expected_monthly(df_with_group).rename(
+            {"_group": group_column}
         )
+        unit = "months"
 
-    df_with_ym = _add_year_month_columns(df, time_column)
-    df_with_ym = df_with_ym.with_columns(
-        [(pl.col("_year") * 12 + pl.col("_month")).alias("_year_month")]
+    # Calculate gaps
+    result = result.with_columns(
+        (pl.col("expected") - pl.col("actual")).alias("missing")
     )
-
-    grouped = df_with_ym.group_by(group_column).agg(
-        [
-            pl.col("_year_month").min().alias("min_year_month"),
-            pl.col("_year_month").max().alias("max_year_month"),
-            pl.col(time_column).n_unique().alias("actual_count"),
-        ]
-    )
-
-    grouped = grouped.with_columns(
-        [
-            (pl.col("max_year_month") - pl.col("min_year_month") + 1).alias(
-                "expected_count"
-            )
-        ]
-    ).with_columns(
-        [(pl.col("expected_count") - pl.col("actual_count")).alias("missing_count")]
-    )
-
-    groups_with_gaps = grouped.filter(pl.col("missing_count") > 0)
+    groups_with_gaps = result.filter(pl.col("missing") > 0)
 
     if groups_with_gaps.height == 0:
-        return OutputValidationResult(
-            dataset_name=dataset_name,
-            validation_name="validate_time_completeness",
-            passed=True,
-            details="All groups have complete time series",
+        return _result(
+            dataset_name, True, 0, f"All groups have complete {unit[:-1]}ly time series"
         )
 
-    total_gaps = groups_with_gaps.select(pl.col("missing_count").sum()).item()
-    affected_groups = groups_with_gaps.select(pl.col(group_column)).to_dicts()
-
-    return OutputValidationResult(
-        dataset_name=dataset_name,
-        validation_name="validate_time_completeness",
-        passed=False,
-        error_count=total_gaps,
-        details=f"{len(affected_groups)} groups have gaps in time periods ({total_gaps} total missing periods)",
-        affected_groups=affected_groups,
+    total_gaps = groups_with_gaps["missing"].sum()
+    return _result(
+        dataset_name,
+        False,
+        total_gaps,
+        f"{groups_with_gaps.height} groups have gaps ({total_gaps} missing {unit})",
     )

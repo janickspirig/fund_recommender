@@ -63,23 +63,31 @@ if-recomender/
 ├── conf/
 │   └── base/
 │       ├── catalog.yml      # Data sources & outputs
-│       ├── globals.yml      # Global computed values (max_period)
-│       └── parameters.yml   # Configuration (investor profiles, thresholds)
+│       ├── globals.yml      # Global computed values (max_period, max_ref_date, trading_days)
+│       └── parameters.yml   # Configuration (investor profiles, thresholds, guardrails)
 ├── data/
-│   ├── 01_raw/              # Raw CVM & ANBIMA data (from Google Drive)
+│   ├── 01_raw/
+│   │   ├── anbima/          # ANBIMA fund characteristics
+│   │   └── cvm/data/
+│   │       ├── monthly/     # Monthly CVM data
+│   │       │   ├── blc_1/ through blc_8/  # Portfolio holdings by asset type
+│   │       │   └── pl/      # Monthly NAV data
+│   │       └── daily/
+│   │           └── quotas/  # Daily quota files (inf_diario_fi)
 │   ├── 01_raw_backup/       # Timestamped backups of raw data
-│   ├── 02_intermediate/     # Filtered & joined data
-│   ├── 03_primary/          # Clean tables (NAV, returns, characteristics)
-│   ├── 04_feature/          # Calculated features (unified table)
+│   ├── 02_intermediate/     # Normalized & filtered data
+│   ├── 03_primary/          # Clean tables (daily returns, characteristics)
+│   ├── 04_feature/          # Calculated features (volatility, Sharpe, etc.)
 │   ├── 05_model_input/      # Normalized scoring inputs
-│   ├── 07_model_output/     # Fund scores per profile
+│   ├── 07_model_output/     # Fund scores per profile & guardrail results
 │   └── 08_reporting/        # Final recommendations
 ├── scripts/
-│   └── restore_data.py      # Restore raw data from backup
+│   ├── download_fi_daily_data.py  # Download daily quota data from CVM
+│   └── restore_data.py            # Restore raw data from backup
 ├── src/if_recomender/
 │   ├── nodes/
-│   │   ├── int/             # Data filtering
-│   │   ├── pri/             # Primary tables
+│   │   ├── int/             # Data normalization & filtering
+│   │   ├── pri/             # Primary tables (daily returns, characteristics)
 │   │   ├── feat/            # Feature calculation
 │   │   ├── mi/              # Score normalization
 │   │   ├── mo/              # Profile scoring & guardrails
@@ -91,9 +99,10 @@ if-recomender/
 ## Data Sources
 
 ### CVM (Comissão de Valores Mobiliários)
-- Monthly fund NAV data (PL files)
+- **Daily fund quota values** (inf_diario_fi files) - used for return/volatility calculations
+- Monthly fund NAV data (PL files) - used for fund filtering and scope determination
 - Portfolio holdings by asset type (BLC_1 through BLC_8)
-- Period: Jan 2023 - Sep 2025 (33 months)
+- Period: Jan 2023 - Sep 2025
 
 ### ANBIMA (Brazilian Financial Markets Association)
 - Fund characteristics (redemption terms, categories, inception dates)
@@ -117,9 +126,10 @@ Raw Data → Filter FI Funds → Calculate Returns → Compute Features
 ## Key Features
 
 ### 1. Volatility & Sharpe Ratio
-- 12-month rolling window
-- Annualized metrics
-- Risk-adjusted returns
+- Calculated from **daily quota returns** (VL_QUOTA), not monthly NAV
+- 252 trading days annualization convention
+- Fixed trading-day windows: 252 days (12m), 63 days (3m)
+- Sharpe ratio uses pre-calculated annualized volatility from volatility feature
 
 ### 2. Liquidity
 - Based on redemption payment days
@@ -196,26 +206,36 @@ guardrails:
     params:
       min_offer_count: 5         
 
-  min_threshold_sharpe_12m:       # Require 12-month positive track record
-    active: true
+  min_threshold_sharpe_12m:       # Require 12-month positive Sharpe
+    active: false                 # Disabled - conservative funds have negative Sharpe
     params:
       min_sharpe_12m: 0.0        
 
-  min_threshold_sharpe_3m:        # Require 3-month track record
+  min_threshold_sharpe_3m:        # Require 3-month positive Sharpe
     active: false
     params:
       min_sharpe_3m: 0.0
 
+  min_threshold_cov_sharpe_12m:   # Require sufficient data coverage for 12m metrics
+    active: true
+    params:
+      min_coverage_12m: 0.80      # 80% of trading days required
+
+  min_threshold_cov_sharpe_3m:    # Require sufficient data coverage for 3m metrics
+    active: true
+    params:
+      min_coverage_3m: 0.80       # 80% of trading days required
+
   no_funds_wo_manager:            # Exclude funds with unknown manager
     active: false
 
-  include_only_active_funds:      # Exclude funds without recent data (PL)
+  include_only_active_funds:      # Exclude funds without recent daily quota data
     active: true
 
-  no_extreme_returns:             # Exclude funds with extreme monthly returns (capital flow issues)
+  no_extreme_returns:             # Exclude funds with extreme daily returns
     active: true
     params:
-      max_abs_monthly_return: 1.0  # 100% threshold                 
+      max_abs_daily_return: 0.10  # 10% daily threshold                 
 ```
 
 Failed guardrails are tracked in `mo_guardrail_mark.csv` with a `failed_guardrails` column showing which checks each fund failed.
@@ -256,60 +276,51 @@ CNPJ of Fund,Investor Profile,Rank,Score,Fund Name
 
 ## Sample Results
 
-The following results demonstrate the profile differentiation achieved by the recommendation system.
-
-### Profile Ladder Summary
-
-| Profile | Avg Sharpe 12m | Avg Volatility | Avg Age | Primary Fund Types |
-|---------|----------------|----------------|---------|-------------------|
-| Conservative | 1.09 | 10.1% | 19.1y | Duração Baixa Soberano, Indexados |
-| Moderate | 3.38 | 6.5% | 15.4y | Duração Média/Baixa Grau de Investimento |
-| Aggressive | 5.48 | 6.1% | 9.7y | Duração Livre Crédito Livre, Grau de Investimento |
-| Speculator | 4.52 | 12.8% | 3.3y | Crédito Livre, Investimento no Exterior |
-
-**Key Observations**:
-- **Fund Age decreases** from Conservative (19y) → Moderate (15y) → Aggressive (10y) → Speculator (3y)
-- **Sharpe ratio increases** from Conservative (1.09) → Aggressive (5.48) - higher risk-adjusted returns
-- **Speculator volatility** is highest (12.8%) with foreign investment exposure
-- **Conservative funds** focus on sovereign/government bonds ("Soberano", "Indexados")
+> **Note**: Results vary based on data period and configuration. Run `kedro run` to generate current recommendations.
 
 ### Top 5 Funds per Profile
 
 #### Conservative
-| # | Fund Name | Score | Sharpe 12m | Vol | Age |
-|---|-----------|-------|------------|-----|-----|
-| 1 | SAFRA SOBERANO DI CLASSE DE INVESTIMENTO RF R | 0.803 | 0.90 | 10.1% | 16y |
-| 2 | ITAÚ RF CP FIF RESP LIMITADA | 0.793 | 0.07 | 3.2% | 24y |
-| 3 | SANTANDER TÍTULOS PÚBLICOS RENDA FIXA REFEREN | 0.774 | 1.10 | 3.7% | 19y |
-| 4 | ITAÚ INSTITUCIONAL RF IRF M 1 FIF RESP LIMITA | 0.759 | 2.27 | 4.7% | 18y |
-| 5 | CLASSE ÚNICA DE COTAS DO GRUPAL CASH FUNDO DE | 0.758 | 1.12 | 28.7% | 18y |
+| # | Fund Name | Score | Vol 12m | Sharpe 12m | Sharpe 3m |
+|---|-----------|-------|---------|------------|-----------|
+| 1 | SULAMÉRICA EXCLUSIVE FIF RF REFERENCIADO DI | 0.79 | 0.11% | -2.8 | 20.0 |
+| 2 | BRADESCO FIF RF REFERENCIADA DI FEDERAL EXTRA | 0.79 | 0.09% | -6.7 | 20.0 |
+| 3 | BB TOP RENDA FIXA CURTO PRAZO FIF | 0.78 | 0.09% | -5.8 | 20.0 |
+| 4 | BB TOP PRINCIPAL RF REFERENCIADO DI LP FIF | 0.76 | 0.09% | -2.8 | 20.0 |
+| 5 | ITAÚ RF CP FIF | 0.75 | 0.09% | -4.9 | 20.0 |
 
 #### Moderate
-| # | Fund Name | Score | Sharpe 12m | Vol | Age |
-|---|-----------|-------|------------|-----|-----|
-| 1 | BB TOP RENDA FIXA ARROJADO FUNDO DE INVESTIME | 0.897 | 1.26 | 2.1% | 26y |
-| 2 | VALORA ABSOLUTE FIF RF CRED PRIV LP - RESP LI | 0.896 | 5.79 | 6.0% | 17y |
-| 3 | CLASSE ÚNICA DE COTAS DO RIZA LOTUS PLUS MAST | 0.880 | 3.20 | 8.2% | 4y |
-| 4 | NU YIELD FIF RF CRED PRIV LP RESP LIMITADA | 0.880 | 5.04 | 9.7% | 4y |
-| 5 | BRADESCO CLASSE DE INVESTIMENTO RF REFERENCIA | 0.879 | 1.60 | 6.3% | 26y |
+| # | Fund Name | Score | Vol 12m | Sharpe 12m | Sharpe 3m |
+|---|-----------|-------|---------|------------|-----------|
+| 1 | PORTO SEGURO MASTER FIF RF CRÉD PRIV LP | 0.87 | 0.15% | 4.7 | 20.0 |
+| 2 | A1 PÓS FIXADO FIF RF CRÉD PRIV | 0.86 | 0.37% | 5.4 | 20.0 |
+| 3 | CAIXA FIDELIDADE PRIVATE FIF RF LP | 0.85 | 0.13% | -1.8 | 20.0 |
+| 4 | TOP RF MIX CRED PRIV LP FIF | 0.85 | 0.29% | 0.6 | 8.6 |
+| 5 | SANTANDER EQUILÍBRIO RF DI CRÉD PRIV FIF | 0.84 | 0.18% | 0.2 | 20.0 |
 
 #### Aggressive
-| # | Fund Name | Score | Sharpe 12m | Vol | Age |
-|---|-----------|-------|------------|-----|-----|
-| 1 | VALORA ABSOLUTE FIF RF CRED PRIV LP - RESP LI | 0.926 | 5.79 | 6.0% | 17y |
-| 2 | Sicoob DI Fundo de Investimento Financeiro Re | 0.914 | 4.22 | 0.9% | 14y |
-| 3 | NU YIELD FIF RF CRED PRIV LP RESP LIMITADA | 0.906 | 5.04 | 9.7% | 4y |
-| 4 | CLASSE ÚNICA DE COTAS DO ABSOLUTE CRETA MASTE | 0.905 | 8.61 | 9.4% | 3y |
-| 5 | BNP PARIBAS RUBI CLASSE DE INVESTIMENTO EM CO | 0.903 | 3.71 | 4.6% | 11y |
+| # | Fund Name | Score | Vol 12m | Sharpe 12m | Sharpe 3m |
+|---|-----------|-------|---------|------------|-----------|
+| 1 | PORTO SEGURO MASTER FIF RF CRÉD PRIV LP | 0.88 | 0.15% | 4.7 | 20.0 |
+| 2 | A1 PÓS FIXADO FIF RF CRÉD PRIV | 0.87 | 0.37% | 5.4 | 20.0 |
+| 3 | ATENA FIF RF CRÉDITO PRIVADO | 0.83 | 0.08% | 3.5 | 20.0 |
+| 4 | TOP RF MIX CRED PRIV LP FIF | 0.83 | 0.29% | 0.6 | 8.6 |
+| 5 | KINEA FIF RF CRÉD PRIV | 0.83 | 0.37% | 2.7 | 10.5 |
 
 #### Speculator
-| # | Fund Name | Score | Sharpe 12m | Vol | Age |
-|---|-----------|-------|------------|-----|-----|
-| 1 | BRADESCO MASTER ULTRA PREVIDÊNCIA FI FINANCEI | 0.951 | 4.62 | 8.1% | 4y |
-| 2 | ITAÚ JANEIRO OFF PREV RF IE FIF RESP LIMITADA | 0.899 | 7.16 | 23.7% | 2y |
-| 3 | JGP CRÉDITO PV FIF RF IE - RESP LIMITADA | 0.899 | 3.71 | 8.8% | 6y |
-| 4 | CAIXA MASTER II CLASSE DE INVESTIMENTO FINANC | 0.877 | 4.83 | 16.3% | 2y |
-| 5 | ICATU VANGUARDA VEÍCULO ESPECIAL FUNDO DE INV | 0.840 | 2.25 | 6.8% | 3y |
+| # | Fund Name | Score | Vol 12m | Sharpe 12m | Sharpe 3m |
+|---|-----------|-------|---------|------------|-----------|
+| 1 | ATENA FIF RF CRÉDITO PRIVADO | 0.86 | 0.08% | 3.5 | 20.0 |
+| 2 | ICATU VANGUARDA VEÍCULO ESPECIAL DC CRED PRIV | 0.84 | 0.19% | 8.5 | 20.0 |
+| 3 | BB VIS CELESC FIC FIF RF LP | 0.83 | 0.09% | 3.8 | 20.0 |
+| 4 | MAPFRE FIF RF II CRED PRIV | 0.83 | 0.14% | 2.8 | 13.0 |
+| 5 | Minascoop FIF RF Crédito Privado | 0.82 | 0.30% | 1.8 | 20.0 |
+
+**Key Observations**:
+- **Conservative**: DI/Soberano funds with ultra-low volatility (~0.08-0.11%), negative 12m Sharpe (tracking CDI closely)
+- **Moderate/Aggressive**: Credit Private funds with positive Sharpe 12m (0.6-5.4) and higher returns
+- **Speculator**: Private credit funds with highest Sharpe 12m ratios (up to 8.5)
+- **Sharpe capped at ±20**: Extreme values from ultra-low volatility funds are capped to avoid misleading metrics
 
 ---
 
@@ -367,19 +378,14 @@ FI;10.705.306/0001-05;URCA FUNDO DE INVESTIMENTO RF...;2023-06-30;-184655.57
 
 ---
 
-### 5. Extreme Returns from Capital Flows
+### 5. Extreme Returns from Capital Flows (RESOLVED)
 
-**Issue**: Returns calculated from NAV changes (`VL_PATRIM_LIQ`) incorrectly capture capital flows (subscriptions/redemptions) as investment returns. ~24% of funds (813 out of 3,431) have at least one monthly return exceeding ±100%.
-
-**Example** (CNPJ 50111345000190):
-```
-Period 202306: NAV = 2,102,555
-Period 202307: NAV = 87,883,376  → Calculated "return" = 4,079%
-```
+**Issue**: Returns calculated from NAV changes (`VL_PATRIM_LIQ`) incorrectly capture capital flows (subscriptions/redemptions) as investment returns.
 
 **Resolution**: 
-- Added `no_extreme_returns` guardrail to filter funds with any monthly return > ±100%
-- Long-term fix: Use quota value (`VL_QUOTA`) from [CVM Daily Fund Report](https://dados.gov.br/dados/conjuntos-dados/fundos-de-investimento-documentos-informe-dirio) instead of NAV
+- **Implemented**: Returns are now calculated from **daily quota values (`VL_QUOTA`)** from CVM inf_diario_fi files
+- Quota values are normalized for capital flows and represent true investment performance
+- `no_extreme_returns` guardrail checks daily returns with 10% threshold as additional safety net
 
 ---
 
@@ -391,16 +397,17 @@ Period 202307: NAV = 87,883,376  → Calculated "return" = 4,079%
 - Parameter tuning is manual (no optimization)
 - Limited to Brazilian fixed income funds
 
-**Recommended Enhancements**:
-1. **Use Quota Value for Returns**: Replace NAV-based return calculations with quota value (`VL_QUOTA`) from the [CVM Daily Fund Report (Informe Diário)](https://dados.gov.br/dados/conjuntos-dados/fundos-de-investimento-documentos-informe-dirio). Currently, returns are calculated from `VL_PATRIM_LIQ` (total NAV), which incorrectly interprets capital flows (subscriptions/redemptions) as investment returns -> daily quota value is adjusted for these flows and represents true investment performance
-2. **Automated Data Pipeline**: Integrate ANBIMA and CVM APIs with Kedro hooks to enable automatic data refresh before pipeline run
-3. **File format**: Migrate to .parquet format or Databricks delta tables to enable scalable approach for longer historical data
-4. **Feature Engineering**: Add duration, credit spread, manager performance, etc.
-5. **Expand DataFrame validations**: Add more validations and leverage libraries like pandera, great expectations etc.
-6. **Parameter Optimization**: Use Bayesian optimization or ML to learn optimal weights
-7. **Backtesting**: Validate recommendations against historical performance
-8. **Unit tests**: Add comprehensive unit tests with pytest to test logic of each pipeline node in isolation
-9. **User Interface**: Build web dashboard for interactive fund exploration
-10. ...
+**Completed Enhancements**:
+1. ~~**Use Quota Value for Returns**~~: **Implemented** - Returns are now calculated from daily `VL_QUOTA` values from CVM inf_diario_fi files, eliminating capital flow distortions
+
+**Recommended Next Steps**:
+1. **Automated Data Pipeline**: Integrate ANBIMA and CVM APIs with Kedro hooks to enable automatic data refresh before pipeline run
+2. **File format**: Migrate to .parquet format or Databricks delta tables to enable scalable approach for longer historical data
+3. **Feature Engineering**: Add duration, credit spread, manager performance, etc.
+4. **Expand DataFrame validations**: Add more validations and leverage libraries like pandera, great expectations etc.
+5. **Parameter Optimization**: Use Bayesian optimization or ML to learn optimal weights
+6. **Backtesting**: Validate recommendations against historical performance
+7. **Unit tests**: Add comprehensive unit tests with pytest to test logic of each pipeline node in isolation
+8. **User Interface**: Build web dashboard for interactive fund exploration
 
 

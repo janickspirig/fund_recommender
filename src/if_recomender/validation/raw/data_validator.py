@@ -283,10 +283,6 @@ class RawDataValidator(BaseModel):
 
         return result
 
-    # =========================================================================
-    # VALIDATION METHODS
-    # =========================================================================
-
     def _check_redundant_quotes(
         self,
         file_path: Path,
@@ -666,10 +662,6 @@ class RawDataValidator(BaseModel):
             i += 1
 
         return "".join(result)
-
-    # =========================================================================
-    # GENERIC IGNORE METHOD
-    # =========================================================================
 
     def _ignore_affected_lines(
         self, file_path: Path, affected_lines: list[int]

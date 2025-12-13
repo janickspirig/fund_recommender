@@ -1,1 +1,4 @@
 max_period: ${max_period:}
+max_ref_date: ${max_ref_date:}
+trading_days_12m: 252
+trading_days_3m: 63
